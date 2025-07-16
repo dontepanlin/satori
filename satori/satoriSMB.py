@@ -1,12 +1,12 @@
 import untangle
 import struct
-import satoriCommon
+from . import satoriCommon
 from pathlib import Path
 from datetime import datetime
 from pypacker.layer12 import ethernet
 from pypacker.layer3 import ip
 #from pypacker.layer567 import smb
-import smbHeader
+from . import smbHeader
 
 # grab the latest fingerprint files:
 # wget chatteronthewire.org/download/updates/satori/fingerprints/tcp.xml -O tcp.xml

@@ -1,5 +1,5 @@
 import untangle
-import satoriCommon
+from . import satoriCommon
 from pathlib import Path
 from datetime import datetime
 from pypacker.layer12 import ethernet

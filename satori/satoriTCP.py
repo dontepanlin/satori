@@ -1,6 +1,6 @@
 import untangle
 import struct
-import satoriCommon
+from . import satoriCommon
 from pathlib import Path
 from pypacker.layer12 import ethernet
 from pypacker.layer3 import ip

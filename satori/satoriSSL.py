@@ -3,7 +3,7 @@ import gzip, shutil
 import untangle
 import json
 import struct
-import satoriCommon
+from . import satoriCommon
 from os import remove
 from os.path import exists
 from pathlib import Path
