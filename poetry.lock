@@ -115,6 +115,17 @@ files = [
 ]
 
 [[package]]
+name = "communityid"
+version = "1.5.0"
+description = "Community ID flow hashing"
+optional = false
+python-versions = "*"
+groups = ["main"]
+files = [
+    {file = "communityid-1.5.0-py3-none-any.whl", hash = "sha256:aa74ddd554f8f012d2dd3bc0008eadd5e1c4bc0c6c7728f2080c637016eade6d"},
+]
+
+[[package]]
 name = "defusedxml"
 version = "0.7.1"
 description = "XML bomb protection for Python stdlib modules"
@@ -221,4 +232,4 @@ zstd = ["zstandard (>=0.18.0)"]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.9,<4.0"
-content-hash = "b802d538231ee64670d8737205843b150352b16511b9715f3aff65c1f24669b2"
+content-hash = "98fe07ff0f22a55baef7f1392245bad5b7c098284545ff513766af0980d2725a"
