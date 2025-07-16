@@ -3,16 +3,19 @@ import datetime
 import os
 import sys
 import time
+from enum import Enum
+import orjson
+from typing import Optional
 
 from pypacker import ppcap, pypacker
-from pypacker.layer3 import icmp, ip
+from pypacker.layer3 import ip
 from pypacker.layer4 import ssl, tcp, udp
 from pypacker.layer12 import ethernet, linuxcc
 from pypacker.layer567 import dhcp, dns, http, ntp
 
 try:
     import pcapy
-except:
+except ImportError:
     import pcapyplus as pcapy
 
 
@@ -205,26 +208,71 @@ def packetType(buf):
     )
 
 
-def printCheck(timeStamp, fingerprint):
-    if fingerprint != None:
-        if historyTime != 0:
-            if fingerprint in historyCheck:
-                value = historyCheck[fingerprint]
-                FMT = "%Y-%m-%dT%H:%M:%S"
-                tdelta = datetime.datetime.strptime(
-                    timeStamp, FMT
-                ) - datetime.datetime.strptime(value, FMT)
-                if tdelta > datetime.timedelta(minutes=historyTime):
-                    print("%s;%s" % (timeStamp, fingerprint), end="\n", flush=True)
-                    historyCheck[fingerprint] = timeStamp
-            else:
-                print("%s;%s" % (timeStamp, fingerprint), end="\n", flush=True)
-                historyCheck[fingerprint] = timeStamp
+class FingerprintFormat(Enum):
+    Raw = "RAW"
+    Json = "JSON"
+
+
+class Dumper:
+    def __init__(self, output_file: Optional[str] = None):
+        self.output_file = output_file
+        self._file = None
+        if self.output_file:
+            self._file = open(self.output_file, "a", encoding="utf-8")
         else:
-            print("%s;%s" % (timeStamp, fingerprint), end="\n", flush=True)
+            self._file = sys.stdout
+
+    def close(self):
+        if self._file and self._file is not sys.stdout:
+            self._file.close()
+            self._file = None
+
+    def __del__(self):
+        self.close()
+
+    def dump(self, data):
+        raise NotImplementedError("This method should be overridden by subclasses")
 
 
-def main():
+class RawDumper(Dumper):
+    def dump(self, data: dict):
+        formatted_data = ";".join(f"{k}={v}" for k, v in data.items())
+        self._file.write(formatted_data + "\n")
+
+
+class JsonDumper(Dumper):
+    def dump(self, data: dict):
+        formatted_data = orjson.dumps(data).decode("utf-8")
+        self._file.write(formatted_data + "\n")
+
+
+FORMAT = FingerprintFormat.Raw
+
+TIMESTAMP_FMT = "%Y-%m-%dT%H:%M:%S"
+
+
+def printCheck(dumper: Dumper, time_stamp, fingerprint):
+    if fingerprint is None:
+        return
+    serialized = {"timestamp": time_stamp, "fingerprint": fingerprint}
+    if historyTime != 0:
+        if fingerprint in historyCheck:
+            value = historyCheck[fingerprint]
+
+            tdelta = datetime.datetime.strptime(
+                time_stamp, TIMESTAMP_FMT
+            ) - datetime.datetime.strptime(value, TIMESTAMP_FMT)
+            if tdelta > datetime.timedelta(minutes=historyTime):
+                dumper.dump(serialized)
+                historyCheck[fingerprint] = time_stamp
+        else:
+            dumper.dump(serialized)
+            historyCheck[fingerprint] = time_stamp
+    else:
+        dumper.dump(serialized)
+
+
+def main(dumper: Dumper):
     # override some warning settings in pypacker.  May need to change this to .CRITICAL in the future, but for now we're trying .ERROR
     # without this when parsing http for example we get "WARNINGS" when packets aren't quite right in the header.
     logger = pypacker.logging.getLogger("pypacker")
@@ -420,7 +468,7 @@ def main():
                                     sPartialList,
                                     saPartialList,
                                 )
-                                printCheck(timeStamp, fingerprint)
+                                printCheck(dumper, timeStamp, fingerprint)
                         except:
                             pass
 
@@ -436,7 +484,7 @@ def main():
                                     sslJA4XMLExactList,
                                 )
                                 for fingerprint in fingerprints:
-                                    printCheck(timeStamp, fingerprint)
+                                    printCheck(dumper, timeStamp, fingerprint)
                         except:
                             pass
 
@@ -523,9 +571,9 @@ def main():
                                     DeclineTTLPartialList,
                                     DeclineTTLExactList,
                                 )
-                                printCheck(timeStamp, fingerprintOptions)
-                                printCheck(timeStamp, fingerprintOption55)
-                                printCheck(timeStamp, fingerprintVendorCode)
+                                printCheck(dumper, timeStamp, fingerprintOptions)
+                                printCheck(dumper, timeStamp, fingerprintOption55)
+                                printCheck(dumper, timeStamp, fingerprintVendorCode)
                         except:
                             pass
 
@@ -542,8 +590,8 @@ def main():
                                     useragentExactList,
                                     useragentPartialList,
                                 )
-                                printCheck(timeStamp, fingerprintHdrUserAgent)
-                                printCheck(timeStamp, fingerprintBodyUserAgent)
+                                printCheck(dumper, timeStamp, fingerprintHdrUserAgent)
+                                printCheck(dumper, timeStamp, fingerprintBodyUserAgent)
                                 [
                                     timeStamp,
                                     fingerprintHdrServer,
@@ -551,8 +599,8 @@ def main():
                                 ] = satoriHTTP.httpServerProcess(
                                     pkt, layer, ts, serverExactList, serverPartialList
                                 )
-                                printCheck(timeStamp, fingerprintHdrServer)
-                                printCheck(timeStamp, fingerprintBodyServer)
+                                printCheck(dumper, timeStamp, fingerprintHdrServer)
+                                printCheck(dumper, timeStamp, fingerprintBodyServer)
                         except:
                             pass
 
@@ -575,8 +623,8 @@ def main():
                                         lanmanPartialList,
                                     )
                                 )
-                                printCheck(timeStamp, fingerprintOS)
-                                printCheck(timeStamp, fingerprintLanMan)
+                                printCheck(dumper, timeStamp, fingerprintOS)
+                                printCheck(dumper, timeStamp, fingerprintLanMan)
                         except:
                             pass
 
@@ -585,7 +633,7 @@ def main():
                                 [timeStamp, fingerprint] = satoriSMB.smbUDPProcess(
                                     pkt, layer, ts, browserExactList, browserPartialList
                                 )
-                                printCheck(timeStamp, fingerprint)
+                                printCheck(dumper, timeStamp, fingerprint)
                         except:
                             pass
 
@@ -594,7 +642,7 @@ def main():
                                 [timeStamp, fingerprint] = satoriDNS.dnsProcess(
                                     pkt, layer, ts, dnsExactList, dnsPartialList
                                 )
-                                printCheck(timeStamp, fingerprint)
+                                printCheck(dumper, timeStamp, fingerprint)
                         except:
                             pass
 
@@ -603,7 +651,7 @@ def main():
                                 [timeStamp, fingerprint] = satoriNTP.ntpProcess(
                                     pkt, layer, ts, ntpExactList, ntpPartialList
                                 )
-                                printCheck(timeStamp, fingerprint)
+                                printCheck(dumper, timeStamp, fingerprint)
                         except:
                             pass
 
@@ -612,7 +660,7 @@ def main():
                                 [timeStamp, fingerprint] = satoriSSH.sshProcess(
                                     pkt, layer, ts, sshExactList, sshPartialList
                                 )
-                                printCheck(timeStamp, fingerprint)
+                                printCheck(dumper, timeStamp, fingerprint)
                         except:
                             pass
 
@@ -665,7 +713,7 @@ def main():
                             sPartialList,
                             saPartialList,
                         )
-                        printCheck(timeStamp, fingerprint)
+                        printCheck(dumper, timeStamp, fingerprint)
                 except:
                     pass
 
@@ -681,7 +729,7 @@ def main():
                             sslJA4XMLExactList,
                         )
                         for fingerprint in fingerprints:
-                            printCheck(timeStamp, fingerprint)
+                            printCheck(dumper, timeStamp, fingerprint)
                 except:
                     pass
 
@@ -689,7 +737,7 @@ def main():
                 #          if quicPacket and sslCheck:
                 #            [timeStamp, fingerprints] = satoriSSL.quicProcess(pkt, layer, ts, sslJA4XMLExactList)
                 #            for fingerprint in fingerprints:
-                #              printCheck(timeStamp, fingerprint)
+                #              printCheck(dumper, timeStamp, fingerprint)
                 #        except:
                 #          pass
 
@@ -776,9 +824,9 @@ def main():
                             DeclineTTLPartialList,
                             DeclineTTLExactList,
                         )
-                        printCheck(timeStamp, fingerprintOptions)
-                        printCheck(timeStamp, fingerprintOption55)
-                        printCheck(timeStamp, fingerprintVendorCode)
+                        printCheck(dumper, timeStamp, fingerprintOptions)
+                        printCheck(dumper, timeStamp, fingerprintOption55)
+                        printCheck(dumper, timeStamp, fingerprintVendorCode)
                 except:
                     pass
 
@@ -791,15 +839,15 @@ def main():
                         ] = satoriHTTP.httpUserAgentProcess(
                             pkt, layer, ts, useragentExactList, useragentPartialList
                         )
-                        printCheck(timeStamp, fingerprintHdrUserAgent)
-                        printCheck(timeStamp, fingerprintBodyUserAgent)
+                        printCheck(dumper, timeStamp, fingerprintHdrUserAgent)
+                        printCheck(dumper, timeStamp, fingerprintBodyUserAgent)
                         [timeStamp, fingerprintHdrServer, fingerprintBodyServer] = (
                             satoriHTTP.httpServerProcess(
                                 pkt, layer, ts, serverExactList, serverPartialList
                             )
                         )
-                        printCheck(timeStamp, fingerprintHdrServer)
-                        printCheck(timeStamp, fingerprintBodyServer)
+                        printCheck(dumper, timeStamp, fingerprintHdrServer)
+                        printCheck(dumper, timeStamp, fingerprintBodyServer)
                 except:
                     pass
 
@@ -822,8 +870,8 @@ def main():
                                 lanmanPartialList,
                             )
                         )
-                        printCheck(timeStamp, fingerprintOS)
-                        printCheck(timeStamp, fingerprintLanMan)
+                        printCheck(dumper, timeStamp, fingerprintOS)
+                        printCheck(dumper, timeStamp, fingerprintLanMan)
                 except Exception as e:
                     pass
                 except:
@@ -834,7 +882,7 @@ def main():
                         [timeStamp, fingerprint] = satoriSMB.smbUDPProcess(
                             pkt, layer, ts, browserExactList, browserPartialList
                         )
-                        printCheck(timeStamp, fingerprint)
+                        printCheck(dumper, timeStamp, fingerprint)
                 except:
                     pass
 
@@ -843,7 +891,7 @@ def main():
                         [timeStamp, fingerprint] = satoriDNS.dnsProcess(
                             pkt, layer, ts, dnsExactList, dnsPartialList
                         )
-                        printCheck(timeStamp, fingerprint)
+                        printCheck(dumper, timeStamp, fingerprint)
                 except:
                     pass
 
@@ -852,7 +900,7 @@ def main():
                         [timeStamp, fingerprint] = satoriNTP.ntpProcess(
                             pkt, layer, ts, ntpExactList, ntpPartialList
                         )
-                        printCheck(timeStamp, fingerprint)
+                        printCheck(dumper, timeStamp, fingerprint)
                 except:
                     pass
 
@@ -861,7 +909,7 @@ def main():
                         [timeStamp, fingerprint] = satoriSSH.sshProcess(
                             pkt, layer, ts, sshExactList, sshPartialList
                         )
-                        printCheck(timeStamp, fingerprint)
+                        printCheck(dumper, timeStamp, fingerprint)
                 except:
                     pass
 
@@ -915,7 +963,7 @@ def main():
                             sPartialList,
                             saPartialList,
                         )
-                        printCheck(timeStamp, fingerprint)
+                        printCheck(dumper, timeStamp, fingerprint)
                 except:
                     pass
 
@@ -931,7 +979,7 @@ def main():
                             sslJA4XMLExactList,
                         )
                         for fingerprint in fingerprints:
-                            printCheck(timeStamp, fingerprint)
+                            printCheck(dumper, timeStamp, fingerprint)
                 except:
                     pass
 
@@ -939,7 +987,7 @@ def main():
                 #          if quicPacket and sslCheck:
                 #            [timeStamp, fingerprints] = satoriSSL.quicProcess(pkt, layer, ts, sslJA4XMLExactList)
                 #            for fingerprint in fingerprints:
-                #              printCheck(timeStamp, fingerprint)
+                #              printCheck(dumper, timeStamp, fingerprint)
                 #        except:
                 #          pass
 
@@ -1026,9 +1074,9 @@ def main():
                             DeclineTTLPartialList,
                             DeclineTTLExactList,
                         )
-                        printCheck(timeStamp, fingerprintOptions)
-                        printCheck(timeStamp, fingerprintOption55)
-                        printCheck(timeStamp, fingerprintVendorCode)
+                        printCheck(dumper, timeStamp, fingerprintOptions)
+                        printCheck(dumper, timeStamp, fingerprintOption55)
+                        printCheck(dumper, timeStamp, fingerprintVendorCode)
                 except:
                     pass
 
@@ -1041,15 +1089,15 @@ def main():
                         ] = satoriHTTP.httpUserAgentProcess(
                             pkt, layer, ts, useragentExactList, useragentPartialList
                         )
-                        printCheck(timeStamp, fingerprintHdrUserAgent)
-                        printCheck(timeStamp, fingerprintBodyUserAgent)
+                        printCheck(dumper, timeStamp, fingerprintHdrUserAgent)
+                        printCheck(dumper, timeStamp, fingerprintBodyUserAgent)
                         [timeStamp, fingerprintHdrServer, fingerprintBodyServer] = (
                             satoriHTTP.httpServerProcess(
                                 pkt, layer, ts, serverExactList, serverPartialList
                             )
                         )
-                        printCheck(timeStamp, fingerprintHdrServer)
-                        printCheck(timeStamp, fingerprintBodyServer)
+                        printCheck(dumper, timeStamp, fingerprintHdrServer)
+                        printCheck(dumper, timeStamp, fingerprintBodyServer)
                 except:
                     pass
 
@@ -1072,8 +1120,8 @@ def main():
                                 lanmanPartialList,
                             )
                         )
-                        printCheck(timeStamp, fingerprintOS)
-                        printCheck(timeStamp, fingerprintLanMan)
+                        printCheck(dumper, timeStamp, fingerprintOS)
+                        printCheck(dumper, timeStamp, fingerprintLanMan)
                 except:
                     pass
 
@@ -1082,7 +1130,7 @@ def main():
                         [timeStamp, fingerprint] = satoriSMB.smbUDPProcess(
                             pkt, layer, ts, browserExactList, browserPartialList
                         )
-                        printCheck(timeStamp, fingerprint)
+                        printCheck(dumper, timeStamp, fingerprint)
                 except:
                     pass
 
@@ -1091,7 +1139,7 @@ def main():
                         [timeStamp, fingerprint] = satoriDNS.dnsProcess(
                             pkt, layer, ts, dnsExactList, dnsPartialList
                         )
-                        printCheck(timeStamp, fingerprint)
+                        printCheck(dumper, timeStamp, fingerprint)
                 except:
                     pass
 
@@ -1100,7 +1148,7 @@ def main():
                         [timeStamp, fingerprint] = satoriNTP.ntpProcess(
                             pkt, layer, ts, ntpExactList, ntpPartialList
                         )
-                        printCheck(timeStamp, fingerprint)
+                        printCheck(dumper, timeStamp, fingerprint)
                 except:
                     pass
 
@@ -1109,7 +1157,7 @@ def main():
                         [timeStamp, fingerprint] = satoriSSH.sshProcess(
                             pkt, layer, ts, sshExactList, sshPartialList
                         )
-                        printCheck(timeStamp, fingerprint)
+                        printCheck(dumper, timeStamp, fingerprint)
                 except:
                     pass
 
@@ -1229,6 +1277,21 @@ try:
         help="download latest trisulnsm json fingerprint file",
         default="",
     )
+    parser.add_argument(
+        "--format",
+        action="store",
+        help="Output format RAW,JSON",
+        default=FingerprintFormat.Raw.value,
+        choices=[mode.value for mode in FingerprintFormat],
+    )
+    parser.add_argument(
+        "-o",
+        "--output",
+        action="store",
+        dest="output_file",
+        help="Output file to write fingerprints in JSON format; example: -o output.json",
+        default="",
+    )
 
     args = parser.parse_args()
 
@@ -1299,9 +1362,9 @@ try:
     if args.trisulnsm:
         satoriSSL.trisulnsmUpdate()
         sys.exit()
-
-    if (__name__ == "__main__") and proceed:
-        main()
+    fingerFormat = FingerprintFormat(args.format)
+    if proceed:
+        main(RawDumper() if fingerFormat == FingerprintFormat.Raw else JsonDumper())
     else:
         print(
             "Need to provide a pcap to read in, a directory to read, or an interface to watch!",
