@@ -12,17 +12,17 @@ import argparse
 import time
 import sys
 import os
-import satoriTCP
-import satoriDHCP
-import satoriHTTP
+from . import satoriTCP
+from . import satoriDHCP
+from . import satoriHTTP
 #import satoriICMP
-import satoriSMB
-import smbHeader
-import satoriCommon
-import satoriSSL
-import satoriDNS
-import satoriNTP
-import satoriSSH
+from . import satoriSMB
+from . import smbHeader
+from . import satoriCommon
+from . import satoriSSL
+from . import satoriDNS
+from . import satoriNTP
+from . import satoriSSH
 
 
 def versionInfo():

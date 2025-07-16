@@ -1,0 +1,30 @@
+[project]
+name = "satori"
+version = "0.1.0"
+description = ""
+authors = [{ name = "Vladislav Egorov", email = "unclehook@ispras.ru" }]
+license = { text = "GNU General Public License v2.0" }
+readme = "README.md"
+requires-python = ">=3.9,<4.0"
+dependencies = [
+    "certifi (==2025.1.31)",
+    "charset-normalizer (==3.4.1)",
+    "defusedxml (==0.7.1)",
+    "idna (==3.10)",
+    "pcapyplus (==1.0.1)",
+    "pypacker (==5.4)",
+    "requests (==2.32.3)",
+    "untangle (==1.2.1)",
+    "urllib3 (==2.3.0)",
+]
+
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.poetry]
+packages = [{ include = "satori" }]
+
+[tool.poetry.scripts]
+satori = "satori.satori:main"
