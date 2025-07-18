@@ -7,16 +7,12 @@ from enum import Enum
 import orjson
 from typing import Optional
 
+import pydantic
 from pypacker import ppcap, pypacker
 from pypacker.layer3 import ip
 from pypacker.layer4 import ssl, tcp, udp
 from pypacker.layer12 import ethernet, linuxcc
 from pypacker.layer567 import dhcp, dns, http, ntp
-
-try:
-    import pcapy
-except ImportError:
-    import pcapyplus as pcapy
 
 
 # import satoriICMP
@@ -30,23 +26,7 @@ from . import (
     satoriSSH,
     satoriSSL,
     satoriTCP,
-    smbHeader,
 )
-
-
-def versionInfo():
-    dateReleased = "satori.py - 2024-07-04"
-    print(dateReleased)
-    satoriTCP.version()
-    satoriDHCP.version()
-    satoriHTTP.version()
-    satoriSMB.version()
-    satoriSSL.version()
-    satoriDNS.version()
-    satoriNTP.version()
-    satoriSSH.version()
-    satoriCommon.version()
-    satoriCommon.getImportVersions()
 
 
 def packetType(buf):
@@ -233,11 +213,17 @@ class Dumper:
     def dump(self, data):
         raise NotImplementedError("This method should be overridden by subclasses")
 
+    def dump_model(self, data: pydantic.BaseModel):
+        raise NotImplementedError("This method should be overridden by subclasses")
+
 
 class RawDumper(Dumper):
     def dump(self, data: dict):
         formatted_data = ";".join(f"{k}={v}" for k, v in data.items())
         self._file.write(formatted_data + "\n")
+
+    def dump_model(self, data: pydantic.BaseModel):
+        self._file.write(data.model_dump() + "\n")
 
 
 class JsonDumper(Dumper):
@@ -245,8 +231,11 @@ class JsonDumper(Dumper):
         formatted_data = orjson.dumps(data).decode("utf-8")
         self._file.write(formatted_data + "\n")
 
+    def dump_model(self, data: pydantic.BaseModel):
+        self._file.write(data.model_dump_json() + "\n")
 
-FORMAT = FingerprintFormat.Raw
+
+FORMAT = FingerprintFormat.Json
 
 TIMESTAMP_FMT = "%Y-%m-%dT%H:%M:%S"
 
@@ -259,9 +248,9 @@ def printCheck(dumper: Dumper, time_stamp, fingerprint):
         if fingerprint in historyCheck:
             value = historyCheck[fingerprint]
 
-            tdelta = datetime.datetime.strptime(
-                time_stamp, TIMESTAMP_FMT
-            ) - datetime.datetime.strptime(value, TIMESTAMP_FMT)
+            tdelta = datetime.datetime.strptime(time_stamp, TIMESTAMP_FMT) - datetime.datetime.strptime(
+                value, TIMESTAMP_FMT
+            )
             if tdelta > datetime.timedelta(minutes=historyTime):
                 dumper.dump(serialized)
                 historyCheck[fingerprint] = time_stamp
@@ -270,6 +259,10 @@ def printCheck(dumper: Dumper, time_stamp, fingerprint):
             historyCheck[fingerprint] = time_stamp
     else:
         dumper.dump(serialized)
+
+
+def print_result(dumper: Dumper, result: satoriCommon.TimedSatoriResult):
+    dumper.dump_model(result)
 
 
 def main(dumper: Dumper):
@@ -286,7 +279,9 @@ def main(dumper: Dumper):
     tcpCheck = False
     dhcpCheck = False
     httpCheck = False
-    icmpCheck = False  # not enabled in lower code at this point due to tracking features I'm not willing to code at this time.
+    icmpCheck = (
+        False  # not enabled in lower code at this point due to tracking features I'm not willing to code at this time.
+    )
     smbCheck = False
     sslCheck = False
     dnsCheck = False
@@ -300,97 +295,20 @@ def main(dumper: Dumper):
         sslJA3JSONExactList,
         sslJA4XMLExactList,
     ] = satoriSSL.BuildSSLFingerprintFiles()
-    [sExactList, saExactList, sPartialList, saPartialList] = (
-        satoriTCP.BuildTCPFingerprintFiles()
-    )
-    [
-        DiscoverOptionsExactList,
-        DiscoverOptionsPartialList,
-        RequestOptionsExactList,
-        RequestOptionsPartialList,
-        ReleaseOptionsExactList,
-        ReleaseOptionsPartialList,
-        ACKOptionsExactList,
-        ACKOptionsPartialList,
-        AnyOptionsExactList,
-        AnyOptionsPartialList,
-        InformOptionsExactList,
-        InformOptionsPartialList,
-        DiscoverOption55ExactList,
-        DiscoverOption55PartialList,
-        RequestOption55ExactList,
-        RequestOption55PartialList,
-        ReleaseOption55ExactList,
-        ReleaseOption55PartialList,
-        ACKOption55ExactList,
-        ACKOption55PartialList,
-        AnyOption55ExactList,
-        AnyOption55PartialList,
-        InformOption55ExactList,
-        InformOption55PartialList,
-        DiscoverVendorCodeExactList,
-        DiscoverVendorCodePartialList,
-        RequestVendorCodeExactList,
-        RequestVendorCodePartialList,
-        ReleaseVendorCodeExactList,
-        ReleaseVendorCodePartialList,
-        ACKVendorCodeExactList,
-        ACKVendorCodePartialList,
-        AnyVendorCodeExactList,
-        AnyVendorCodePartialList,
-        InformVendorCodeExactList,
-        InformVendorCodePartialList,
-        DiscoverTTLExactList,
-        DiscoverTTLPartialList,
-        RequestTTLExactList,
-        RequestTTLPartialList,
-        ReleaseTTLExactList,
-        ACKTTLExactList,
-        AnyTTLExactList,
-        InformTTLExactList,
-        ACKTTLPartialList,
-        AnyTTLPartialList,
-        InformTTLPartialList,
-        NAKOptionsPartialList,
-        NAKOptionsExactList,
-        NAKOption55PartialList,
-        NAKOption55ExactList,
-        NAKVendorCodePartialList,
-        NAKVendorCodeExactList,
-        NAKTTLPartialList,
-        NAKTTLExactList,
-        OfferOptionsPartialList,
-        OfferOptionsExactList,
-        OfferOption55PartialList,
-        OfferOption55ExactList,
-        OfferVendorCodePartialList,
-        OfferVendorCodeExactList,
-        OfferTTLPartialList,
-        OfferTTLExactList,
-        DeclineOptionsPartialList,
-        DeclineOptionsExactList,
-        DeclineOption55PartialList,
-        DeclineOption55ExactList,
-        DeclineVendorCodePartialList,
-        DeclineVendorCodeExactList,
-        DeclineTTLPartialList,
-        DeclineTTLExactList,
-    ] = satoriDHCP.BuildDHCPFingerprintFiles()
-    [useragentExactList, useragentPartialList] = (
-        satoriHTTP.BuildHTTPUserAgentFingerprintFiles()
-    )
+
+    tcpProcess = satoriTCP.TcpProcesser()
+    tcpProcess.load_fingerprints()
+    dhcp_fp = satoriDHCP.BuildDHCPFingerprintFiles()
+    [useragentExactList, useragentPartialList] = satoriHTTP.BuildHTTPUserAgentFingerprintFiles()
     [serverExactList, serverPartialList] = satoriHTTP.BuildHTTPServerFingerprintFiles()
     # [icmpExactList, icmpDataExactList, icmpPartialList, icmpDataPartialList] = satoriICMP.BuildICMPFingerprintFiles()
-    [nativeExactList, lanmanExactList, nativePartialList, lanmanPartialList] = (
-        satoriSMB.BuildSMBTCPFingerprintFiles()
-    )
+    [nativeExactList, lanmanExactList, nativePartialList, lanmanPartialList] = satoriSMB.BuildSMBTCPFingerprintFiles()
     [browserExactList, browserPartialList] = satoriSMB.BuildSMBUDPFingerprintFiles()
     [dnsExactList, dnsPartialList] = satoriDNS.BuildDNSFingerprintFiles()
     [ntpExactList, ntpPartialList] = satoriNTP.BuildNTPFingerprintFiles()
     [sshExactList, sshPartialList] = satoriSSH.BuildSSHFingerprintFiles()
 
     # check pypacker version due to changes between 4.9 and 5.0 for one TCP feature
-    pypackerVersion = satoriCommon.checkPyPackerVersion()
 
     if len(modules) == 0:
         tcpCheck = True
@@ -427,253 +345,156 @@ def main(dumper: Dumper):
     if (
         directory != ""
     ):  # probably a better way to do this and dupe most of the below code from preader section, but DHCP passing parameters into a procedure sucks.
-        onlyfiles = [
-            f
-            for f in os.listdir(directory)
-            if os.path.isfile(os.path.join(directory, f))
-        ]
+        onlyfiles = [f for f in os.listdir(directory) if os.path.isfile(os.path.join(directory, f))]
         for f in onlyfiles:
-            try:
-                preader = ppcap.Reader(filename=directory + "/" + f)
+            preader = ppcap.Reader(filename=directory + "/" + f)
 
-                for ts, buf in preader:
+            for ts, buf in preader:
+                try:
+                    counter = counter + 1
+                    ts = ts / 1000000000
+
+                    (
+                        pkt,
+                        layer,
+                        tcpPacket,
+                        dhcpPacket,
+                        httpPacket,
+                        udpPacket,
+                        sslPacket,
+                        smbPacket,
+                        dnsPacket,
+                        ntpPacket,
+                        quicPacket,
+                        sshPacket,
+                    ) = packetType(buf)
+
+                    if tcpPacket and tcpCheck:
+                        result = tcpProcess.process(pkt, layer, ts)
+                        if result:
+                            print_result(dumper, result)
+
                     try:
-                        counter = counter + 1
-                        ts = ts / 1000000000
-
-                        (
-                            pkt,
-                            layer,
-                            tcpPacket,
-                            dhcpPacket,
-                            httpPacket,
-                            udpPacket,
-                            sslPacket,
-                            smbPacket,
-                            dnsPacket,
-                            ntpPacket,
-                            quicPacket,
-                            sshPacket,
-                        ) = packetType(buf)
-
-                        try:
-                            if tcpPacket and tcpCheck:
-                                [timeStamp, fingerprint] = satoriTCP.tcpProcess(
-                                    pkt,
-                                    layer,
-                                    ts,
-                                    pypackerVersion,
-                                    sExactList,
-                                    saExactList,
-                                    sPartialList,
-                                    saPartialList,
-                                )
+                        if sslPacket and sslCheck:
+                            [timeStamp, fingerprints] = satoriSSL.sslProcess(
+                                pkt,
+                                layer,
+                                ts,
+                                sslJA3XMLExactList,
+                                sslJA3SXMLExactList,
+                                sslJA3JSONExactList,
+                                sslJA4XMLExactList,
+                            )
+                            for fingerprint in fingerprints:
                                 printCheck(dumper, timeStamp, fingerprint)
-                        except:
-                            pass
-
-                        try:
-                            if sslPacket and sslCheck:
-                                [timeStamp, fingerprints] = satoriSSL.sslProcess(
-                                    pkt,
-                                    layer,
-                                    ts,
-                                    sslJA3XMLExactList,
-                                    sslJA3SXMLExactList,
-                                    sslJA3JSONExactList,
-                                    sslJA4XMLExactList,
-                                )
-                                for fingerprint in fingerprints:
-                                    printCheck(dumper, timeStamp, fingerprint)
-                        except:
-                            pass
-
-                        try:
-                            if dhcpPacket and dhcpCheck:
-                                [
-                                    timeStamp,
-                                    fingerprintOptions,
-                                    fingerprintOption55,
-                                    fingerprintVendorCode,
-                                ] = satoriDHCP.dhcpProcess(
-                                    pkt,
-                                    layer,
-                                    ts,
-                                    DiscoverOptionsExactList,
-                                    DiscoverOptionsPartialList,
-                                    RequestOptionsExactList,
-                                    RequestOptionsPartialList,
-                                    ReleaseOptionsExactList,
-                                    ReleaseOptionsPartialList,
-                                    ACKOptionsExactList,
-                                    ACKOptionsPartialList,
-                                    AnyOptionsExactList,
-                                    AnyOptionsPartialList,
-                                    InformOptionsExactList,
-                                    InformOptionsPartialList,
-                                    DiscoverOption55ExactList,
-                                    DiscoverOption55PartialList,
-                                    RequestOption55ExactList,
-                                    RequestOption55PartialList,
-                                    ReleaseOption55ExactList,
-                                    ReleaseOption55PartialList,
-                                    ACKOption55ExactList,
-                                    ACKOption55PartialList,
-                                    AnyOption55ExactList,
-                                    AnyOption55PartialList,
-                                    InformOption55ExactList,
-                                    InformOption55PartialList,
-                                    DiscoverVendorCodeExactList,
-                                    DiscoverVendorCodePartialList,
-                                    RequestVendorCodeExactList,
-                                    RequestVendorCodePartialList,
-                                    ReleaseVendorCodeExactList,
-                                    ReleaseVendorCodePartialList,
-                                    ACKVendorCodeExactList,
-                                    ACKVendorCodePartialList,
-                                    AnyVendorCodeExactList,
-                                    AnyVendorCodePartialList,
-                                    InformVendorCodeExactList,
-                                    InformVendorCodePartialList,
-                                    DiscoverTTLExactList,
-                                    DiscoverTTLPartialList,
-                                    RequestTTLExactList,
-                                    RequestTTLPartialList,
-                                    ReleaseTTLExactList,
-                                    ACKTTLExactList,
-                                    AnyTTLExactList,
-                                    InformTTLExactList,
-                                    ACKTTLPartialList,
-                                    AnyTTLPartialList,
-                                    InformTTLPartialList,
-                                    NAKOptionsPartialList,
-                                    NAKOptionsExactList,
-                                    NAKOption55PartialList,
-                                    NAKOption55ExactList,
-                                    NAKVendorCodePartialList,
-                                    NAKVendorCodeExactList,
-                                    NAKTTLPartialList,
-                                    NAKTTLExactList,
-                                    OfferOptionsPartialList,
-                                    OfferOptionsExactList,
-                                    OfferOption55PartialList,
-                                    OfferOption55ExactList,
-                                    OfferVendorCodePartialList,
-                                    OfferVendorCodeExactList,
-                                    OfferTTLPartialList,
-                                    OfferTTLExactList,
-                                    DeclineOptionsPartialList,
-                                    DeclineOptionsExactList,
-                                    DeclineOption55PartialList,
-                                    DeclineOption55ExactList,
-                                    DeclineVendorCodePartialList,
-                                    DeclineVendorCodeExactList,
-                                    DeclineTTLPartialList,
-                                    DeclineTTLExactList,
-                                )
-                                printCheck(dumper, timeStamp, fingerprintOptions)
-                                printCheck(dumper, timeStamp, fingerprintOption55)
-                                printCheck(dumper, timeStamp, fingerprintVendorCode)
-                        except:
-                            pass
-
-                        try:
-                            if httpPacket and httpCheck:
-                                [
-                                    timeStamp,
-                                    fingerprintHdrUserAgent,
-                                    fingerprintBodyUserAgent,
-                                ] = satoriHTTP.httpUserAgentProcess(
-                                    pkt,
-                                    layer,
-                                    ts,
-                                    useragentExactList,
-                                    useragentPartialList,
-                                )
-                                printCheck(dumper, timeStamp, fingerprintHdrUserAgent)
-                                printCheck(dumper, timeStamp, fingerprintBodyUserAgent)
-                                [
-                                    timeStamp,
-                                    fingerprintHdrServer,
-                                    fingerprintBodyServer,
-                                ] = satoriHTTP.httpServerProcess(
-                                    pkt, layer, ts, serverExactList, serverPartialList
-                                )
-                                printCheck(dumper, timeStamp, fingerprintHdrServer)
-                                printCheck(dumper, timeStamp, fingerprintBodyServer)
-                        except:
-                            pass
-
-                        #            try:
-                        #              if (eth[ethernet.Ethernet, ip.IP, icmp.ICMP] is not None) and icmpCheck:
-                        #                satoriICMP.icmpProcess(eth, ts, icmpExactList, icmpDataExactList, icmpPartialList, icmpDataPartialList)
-                        #            except:
-                        #              pass
-
-                        try:
-                            if tcpPacket and smbPacket and smbCheck:
-                                [timeStamp, fingerprintOS, fingerprintLanMan] = (
-                                    satoriSMB.smbTCPProcess(
-                                        pkt,
-                                        layer,
-                                        ts,
-                                        nativeExactList,
-                                        lanmanExactList,
-                                        nativePartialList,
-                                        lanmanPartialList,
-                                    )
-                                )
-                                printCheck(dumper, timeStamp, fingerprintOS)
-                                printCheck(dumper, timeStamp, fingerprintLanMan)
-                        except:
-                            pass
-
-                        try:
-                            if udpPacket and smbPacket and smbCheck:
-                                [timeStamp, fingerprint] = satoriSMB.smbUDPProcess(
-                                    pkt, layer, ts, browserExactList, browserPartialList
-                                )
-                                printCheck(dumper, timeStamp, fingerprint)
-                        except:
-                            pass
-
-                        try:
-                            if dnsPacket and dnsCheck:
-                                [timeStamp, fingerprint] = satoriDNS.dnsProcess(
-                                    pkt, layer, ts, dnsExactList, dnsPartialList
-                                )
-                                printCheck(dumper, timeStamp, fingerprint)
-                        except:
-                            pass
-
-                        try:
-                            if ntpPacket and ntpCheck:
-                                [timeStamp, fingerprint] = satoriNTP.ntpProcess(
-                                    pkt, layer, ts, ntpExactList, ntpPartialList
-                                )
-                                printCheck(dumper, timeStamp, fingerprint)
-                        except:
-                            pass
-
-                        try:
-                            if sshPacket and sshCheck:
-                                [timeStamp, fingerprint] = satoriSSH.sshProcess(
-                                    pkt, layer, ts, sshExactList, sshPartialList
-                                )
-                                printCheck(dumper, timeStamp, fingerprint)
-                        except:
-                            pass
-
-                    except (KeyboardInterrupt, SystemExit):
-                        raise
-                    except ValueError as e:
-                        pass
-                    except Exception as e:
-                        pass
                     except:
                         pass
-            except:
-                pass  # file not in pcap format
+
+                    try:
+                        if dhcpPacket and dhcpCheck:
+                            [
+                                timeStamp,
+                                fingerprintOptions,
+                                fingerprintOption55,
+                                fingerprintVendorCode,
+                            ] = satoriDHCP.dhcpProcess(pkt, layer, ts, dhcp_fp)
+                            printCheck(dumper, timeStamp, fingerprintOptions)
+                            printCheck(dumper, timeStamp, fingerprintOption55)
+                            printCheck(dumper, timeStamp, fingerprintVendorCode)
+                    except:
+                        pass
+
+                    try:
+                        if httpPacket and httpCheck:
+                            [
+                                timeStamp,
+                                fingerprintHdrUserAgent,
+                                fingerprintBodyUserAgent,
+                            ] = satoriHTTP.httpUserAgentProcess(
+                                pkt,
+                                layer,
+                                ts,
+                                useragentExactList,
+                                useragentPartialList,
+                            )
+                            printCheck(dumper, timeStamp, fingerprintHdrUserAgent)
+                            printCheck(dumper, timeStamp, fingerprintBodyUserAgent)
+                            [
+                                timeStamp,
+                                fingerprintHdrServer,
+                                fingerprintBodyServer,
+                            ] = satoriHTTP.httpServerProcess(pkt, layer, ts, serverExactList, serverPartialList)
+                            printCheck(dumper, timeStamp, fingerprintHdrServer)
+                            printCheck(dumper, timeStamp, fingerprintBodyServer)
+                    except:
+                        pass
+
+                    #            try:
+                    #              if (eth[ethernet.Ethernet, ip.IP, icmp.ICMP] is not None) and icmpCheck:
+                    #                satoriICMP.icmpProcess(eth, ts, icmpExactList, icmpDataExactList, icmpPartialList, icmpDataPartialList)
+                    #            except:
+                    #              pass
+
+                    try:
+                        if tcpPacket and smbPacket and smbCheck:
+                            [timeStamp, fingerprintOS, fingerprintLanMan] = satoriSMB.smbTCPProcess(
+                                pkt,
+                                layer,
+                                ts,
+                                nativeExactList,
+                                lanmanExactList,
+                                nativePartialList,
+                                lanmanPartialList,
+                            )
+                            printCheck(dumper, timeStamp, fingerprintOS)
+                            printCheck(dumper, timeStamp, fingerprintLanMan)
+                    except:
+                        pass
+
+                    try:
+                        if udpPacket and smbPacket and smbCheck:
+                            [timeStamp, fingerprint] = satoriSMB.smbUDPProcess(
+                                pkt, layer, ts, browserExactList, browserPartialList
+                            )
+                            printCheck(dumper, timeStamp, fingerprint)
+                    except:
+                        pass
+
+                    try:
+                        if dnsPacket and dnsCheck:
+                            [timeStamp, fingerprint] = satoriDNS.dnsProcess(
+                                pkt, layer, ts, dnsExactList, dnsPartialList
+                            )
+                            printCheck(dumper, timeStamp, fingerprint)
+                    except:
+                        pass
+
+                    try:
+                        if ntpPacket and ntpCheck:
+                            [timeStamp, fingerprint] = satoriNTP.ntpProcess(
+                                pkt, layer, ts, ntpExactList, ntpPartialList
+                            )
+                            printCheck(dumper, timeStamp, fingerprint)
+                    except:
+                        pass
+
+                    try:
+                        if sshPacket and sshCheck:
+                            [timeStamp, fingerprint] = satoriSSH.sshProcess(
+                                pkt, layer, ts, sshExactList, sshPartialList
+                            )
+                            printCheck(dumper, timeStamp, fingerprint)
+                    except:
+                        pass
+
+                except (KeyboardInterrupt, SystemExit):
+                    raise
+                except ValueError:
+                    pass
+                except Exception:
+                    pass
+                except:
+                    pass
 
     elif readpcap != "":
         try:
@@ -701,21 +522,13 @@ def main(dumper: Dumper):
                     sshPacket,
                 ) = packetType(buf)
 
-                try:
-                    if tcpPacket and tcpCheck:
-                        [timeStamp, fingerprint] = satoriTCP.tcpProcess(
-                            pkt,
-                            layer,
-                            ts,
-                            pypackerVersion,
-                            sExactList,
-                            saExactList,
-                            sPartialList,
-                            saPartialList,
-                        )
-                        printCheck(dumper, timeStamp, fingerprint)
-                except:
-                    pass
+                if tcpPacket and tcpCheck:
+                    try:
+                        result = tcpProcess.process(pkt, layer, ts)
+                        if result:
+                            print_result(dumper, result)
+                    except Exception as exc:
+                        print(exc)
 
                 try:
                     if sslPacket and sslCheck:
@@ -748,82 +561,7 @@ def main(dumper: Dumper):
                             fingerprintOptions,
                             fingerprintOption55,
                             fingerprintVendorCode,
-                        ] = satoriDHCP.dhcpProcess(
-                            pkt,
-                            layer,
-                            ts,
-                            DiscoverOptionsExactList,
-                            DiscoverOptionsPartialList,
-                            RequestOptionsExactList,
-                            RequestOptionsPartialList,
-                            ReleaseOptionsExactList,
-                            ReleaseOptionsPartialList,
-                            ACKOptionsExactList,
-                            ACKOptionsPartialList,
-                            AnyOptionsExactList,
-                            AnyOptionsPartialList,
-                            InformOptionsExactList,
-                            InformOptionsPartialList,
-                            DiscoverOption55ExactList,
-                            DiscoverOption55PartialList,
-                            RequestOption55ExactList,
-                            RequestOption55PartialList,
-                            ReleaseOption55ExactList,
-                            ReleaseOption55PartialList,
-                            ACKOption55ExactList,
-                            ACKOption55PartialList,
-                            AnyOption55ExactList,
-                            AnyOption55PartialList,
-                            InformOption55ExactList,
-                            InformOption55PartialList,
-                            DiscoverVendorCodeExactList,
-                            DiscoverVendorCodePartialList,
-                            RequestVendorCodeExactList,
-                            RequestVendorCodePartialList,
-                            ReleaseVendorCodeExactList,
-                            ReleaseVendorCodePartialList,
-                            ACKVendorCodeExactList,
-                            ACKVendorCodePartialList,
-                            AnyVendorCodeExactList,
-                            AnyVendorCodePartialList,
-                            InformVendorCodeExactList,
-                            InformVendorCodePartialList,
-                            DiscoverTTLExactList,
-                            DiscoverTTLPartialList,
-                            RequestTTLExactList,
-                            RequestTTLPartialList,
-                            ReleaseTTLExactList,
-                            ACKTTLExactList,
-                            AnyTTLExactList,
-                            InformTTLExactList,
-                            ACKTTLPartialList,
-                            AnyTTLPartialList,
-                            InformTTLPartialList,
-                            NAKOptionsPartialList,
-                            NAKOptionsExactList,
-                            NAKOption55PartialList,
-                            NAKOption55ExactList,
-                            NAKVendorCodePartialList,
-                            NAKVendorCodeExactList,
-                            NAKTTLPartialList,
-                            NAKTTLExactList,
-                            OfferOptionsPartialList,
-                            OfferOptionsExactList,
-                            OfferOption55PartialList,
-                            OfferOption55ExactList,
-                            OfferVendorCodePartialList,
-                            OfferVendorCodeExactList,
-                            OfferTTLPartialList,
-                            OfferTTLExactList,
-                            DeclineOptionsPartialList,
-                            DeclineOptionsExactList,
-                            DeclineOption55PartialList,
-                            DeclineOption55ExactList,
-                            DeclineVendorCodePartialList,
-                            DeclineVendorCodeExactList,
-                            DeclineTTLPartialList,
-                            DeclineTTLExactList,
-                        )
+                        ] = satoriDHCP.dhcpProcess(pkt, layer, ts, dhcp_fp)
                         printCheck(dumper, timeStamp, fingerprintOptions)
                         printCheck(dumper, timeStamp, fingerprintOption55)
                         printCheck(dumper, timeStamp, fingerprintVendorCode)
@@ -836,15 +574,11 @@ def main(dumper: Dumper):
                             timeStamp,
                             fingerprintHdrUserAgent,
                             fingerprintBodyUserAgent,
-                        ] = satoriHTTP.httpUserAgentProcess(
-                            pkt, layer, ts, useragentExactList, useragentPartialList
-                        )
+                        ] = satoriHTTP.httpUserAgentProcess(pkt, layer, ts, useragentExactList, useragentPartialList)
                         printCheck(dumper, timeStamp, fingerprintHdrUserAgent)
                         printCheck(dumper, timeStamp, fingerprintBodyUserAgent)
-                        [timeStamp, fingerprintHdrServer, fingerprintBodyServer] = (
-                            satoriHTTP.httpServerProcess(
-                                pkt, layer, ts, serverExactList, serverPartialList
-                            )
+                        [timeStamp, fingerprintHdrServer, fingerprintBodyServer] = satoriHTTP.httpServerProcess(
+                            pkt, layer, ts, serverExactList, serverPartialList
                         )
                         printCheck(dumper, timeStamp, fingerprintHdrServer)
                         printCheck(dumper, timeStamp, fingerprintBodyServer)
@@ -859,20 +593,18 @@ def main(dumper: Dumper):
 
                 try:
                     if tcpPacket and smbPacket and smbCheck:
-                        [timeStamp, fingerprintOS, fingerprintLanMan] = (
-                            satoriSMB.smbTCPProcess(
-                                pkt,
-                                layer,
-                                ts,
-                                nativeExactList,
-                                lanmanExactList,
-                                nativePartialList,
-                                lanmanPartialList,
-                            )
+                        [timeStamp, fingerprintOS, fingerprintLanMan] = satoriSMB.smbTCPProcess(
+                            pkt,
+                            layer,
+                            ts,
+                            nativeExactList,
+                            lanmanExactList,
+                            nativePartialList,
+                            lanmanPartialList,
                         )
                         printCheck(dumper, timeStamp, fingerprintOS)
                         printCheck(dumper, timeStamp, fingerprintLanMan)
-                except Exception as e:
+                except Exception:
                     pass
                 except:
                     pass
@@ -888,36 +620,30 @@ def main(dumper: Dumper):
 
                 try:
                     if dnsPacket and dnsCheck:
-                        [timeStamp, fingerprint] = satoriDNS.dnsProcess(
-                            pkt, layer, ts, dnsExactList, dnsPartialList
-                        )
+                        [timeStamp, fingerprint] = satoriDNS.dnsProcess(pkt, layer, ts, dnsExactList, dnsPartialList)
                         printCheck(dumper, timeStamp, fingerprint)
                 except:
                     pass
 
                 try:
                     if ntpPacket and ntpCheck:
-                        [timeStamp, fingerprint] = satoriNTP.ntpProcess(
-                            pkt, layer, ts, ntpExactList, ntpPartialList
-                        )
+                        [timeStamp, fingerprint] = satoriNTP.ntpProcess(pkt, layer, ts, ntpExactList, ntpPartialList)
                         printCheck(dumper, timeStamp, fingerprint)
                 except:
                     pass
 
                 try:
                     if sshPacket and sshCheck:
-                        [timeStamp, fingerprint] = satoriSSH.sshProcess(
-                            pkt, layer, ts, sshExactList, sshPartialList
-                        )
+                        [timeStamp, fingerprint] = satoriSSH.sshProcess(pkt, layer, ts, sshExactList, sshPartialList)
                         printCheck(dumper, timeStamp, fingerprint)
                 except:
                     pass
 
             except (KeyboardInterrupt, SystemExit):
                 raise
-            except ValueError as e:
+            except ValueError:
                 pass
-            except Exception as e:
+            except Exception:
                 pass
             except:
                 pass
@@ -953,17 +679,9 @@ def main(dumper: Dumper):
 
                 try:
                     if tcpPacket and tcpCheck:
-                        [timeStamp, fingerprint] = satoriTCP.tcpProcess(
-                            pkt,
-                            layer,
-                            ts,
-                            pypackerVersion,
-                            sExactList,
-                            saExactList,
-                            sPartialList,
-                            saPartialList,
-                        )
-                        printCheck(dumper, timeStamp, fingerprint)
+                        result = tcpProcess.process(pkt, layer, ts)
+                        if result:
+                            print_result(dumper, result)
                 except:
                     pass
 
@@ -998,82 +716,7 @@ def main(dumper: Dumper):
                             fingerprintOptions,
                             fingerprintOption55,
                             fingerprintVendorCode,
-                        ] = satoriDHCP.dhcpProcess(
-                            pkt,
-                            layer,
-                            ts,
-                            DiscoverOptionsExactList,
-                            DiscoverOptionsPartialList,
-                            RequestOptionsExactList,
-                            RequestOptionsPartialList,
-                            ReleaseOptionsExactList,
-                            ReleaseOptionsPartialList,
-                            ACKOptionsExactList,
-                            ACKOptionsPartialList,
-                            AnyOptionsExactList,
-                            AnyOptionsPartialList,
-                            InformOptionsExactList,
-                            InformOptionsPartialList,
-                            DiscoverOption55ExactList,
-                            DiscoverOption55PartialList,
-                            RequestOption55ExactList,
-                            RequestOption55PartialList,
-                            ReleaseOption55ExactList,
-                            ReleaseOption55PartialList,
-                            ACKOption55ExactList,
-                            ACKOption55PartialList,
-                            AnyOption55ExactList,
-                            AnyOption55PartialList,
-                            InformOption55ExactList,
-                            InformOption55PartialList,
-                            DiscoverVendorCodeExactList,
-                            DiscoverVendorCodePartialList,
-                            RequestVendorCodeExactList,
-                            RequestVendorCodePartialList,
-                            ReleaseVendorCodeExactList,
-                            ReleaseVendorCodePartialList,
-                            ACKVendorCodeExactList,
-                            ACKVendorCodePartialList,
-                            AnyVendorCodeExactList,
-                            AnyVendorCodePartialList,
-                            InformVendorCodeExactList,
-                            InformVendorCodePartialList,
-                            DiscoverTTLExactList,
-                            DiscoverTTLPartialList,
-                            RequestTTLExactList,
-                            RequestTTLPartialList,
-                            ReleaseTTLExactList,
-                            ACKTTLExactList,
-                            AnyTTLExactList,
-                            InformTTLExactList,
-                            ACKTTLPartialList,
-                            AnyTTLPartialList,
-                            InformTTLPartialList,
-                            NAKOptionsPartialList,
-                            NAKOptionsExactList,
-                            NAKOption55PartialList,
-                            NAKOption55ExactList,
-                            NAKVendorCodePartialList,
-                            NAKVendorCodeExactList,
-                            NAKTTLPartialList,
-                            NAKTTLExactList,
-                            OfferOptionsPartialList,
-                            OfferOptionsExactList,
-                            OfferOption55PartialList,
-                            OfferOption55ExactList,
-                            OfferVendorCodePartialList,
-                            OfferVendorCodeExactList,
-                            OfferTTLPartialList,
-                            OfferTTLExactList,
-                            DeclineOptionsPartialList,
-                            DeclineOptionsExactList,
-                            DeclineOption55PartialList,
-                            DeclineOption55ExactList,
-                            DeclineVendorCodePartialList,
-                            DeclineVendorCodeExactList,
-                            DeclineTTLPartialList,
-                            DeclineTTLExactList,
-                        )
+                        ] = satoriDHCP.dhcpProcess(pkt, layer, ts, dhcp_fp)
                         printCheck(dumper, timeStamp, fingerprintOptions)
                         printCheck(dumper, timeStamp, fingerprintOption55)
                         printCheck(dumper, timeStamp, fingerprintVendorCode)
@@ -1086,15 +729,11 @@ def main(dumper: Dumper):
                             timeStamp,
                             fingerprintHdrUserAgent,
                             fingerprintBodyUserAgent,
-                        ] = satoriHTTP.httpUserAgentProcess(
-                            pkt, layer, ts, useragentExactList, useragentPartialList
-                        )
+                        ] = satoriHTTP.httpUserAgentProcess(pkt, layer, ts, useragentExactList, useragentPartialList)
                         printCheck(dumper, timeStamp, fingerprintHdrUserAgent)
                         printCheck(dumper, timeStamp, fingerprintBodyUserAgent)
-                        [timeStamp, fingerprintHdrServer, fingerprintBodyServer] = (
-                            satoriHTTP.httpServerProcess(
-                                pkt, layer, ts, serverExactList, serverPartialList
-                            )
+                        [timeStamp, fingerprintHdrServer, fingerprintBodyServer] = satoriHTTP.httpServerProcess(
+                            pkt, layer, ts, serverExactList, serverPartialList
                         )
                         printCheck(dumper, timeStamp, fingerprintHdrServer)
                         printCheck(dumper, timeStamp, fingerprintBodyServer)
@@ -1109,16 +748,14 @@ def main(dumper: Dumper):
 
                 try:
                     if tcpPacket and smbPacket and smbCheck:
-                        [timeStamp, fingerprintOS, fingerprintLanMan] = (
-                            satoriSMB.smbTCPProcess(
-                                pkt,
-                                layer,
-                                ts,
-                                nativeExactList,
-                                lanmanExactList,
-                                nativePartialList,
-                                lanmanPartialList,
-                            )
+                        [timeStamp, fingerprintOS, fingerprintLanMan] = satoriSMB.smbTCPProcess(
+                            pkt,
+                            layer,
+                            ts,
+                            nativeExactList,
+                            lanmanExactList,
+                            nativePartialList,
+                            lanmanPartialList,
                         )
                         printCheck(dumper, timeStamp, fingerprintOS)
                         printCheck(dumper, timeStamp, fingerprintLanMan)
@@ -1136,36 +773,30 @@ def main(dumper: Dumper):
 
                 try:
                     if dnsPacket and dnsCheck:
-                        [timeStamp, fingerprint] = satoriDNS.dnsProcess(
-                            pkt, layer, ts, dnsExactList, dnsPartialList
-                        )
+                        [timeStamp, fingerprint] = satoriDNS.dnsProcess(pkt, layer, ts, dnsExactList, dnsPartialList)
                         printCheck(dumper, timeStamp, fingerprint)
                 except:
                     pass
 
                 try:
                     if ntpPacket and ntpCheck:
-                        [timeStamp, fingerprint] = satoriNTP.ntpProcess(
-                            pkt, layer, ts, ntpExactList, ntpPartialList
-                        )
+                        [timeStamp, fingerprint] = satoriNTP.ntpProcess(pkt, layer, ts, ntpExactList, ntpPartialList)
                         printCheck(dumper, timeStamp, fingerprint)
                 except:
                     pass
 
                 try:
                     if sshPacket and sshCheck:
-                        [timeStamp, fingerprint] = satoriSSH.sshProcess(
-                            pkt, layer, ts, sshExactList, sshPartialList
-                        )
+                        [timeStamp, fingerprint] = satoriSSH.sshProcess(pkt, layer, ts, sshExactList, sshPartialList)
                         printCheck(dumper, timeStamp, fingerprint)
                 except:
                     pass
 
             except (KeyboardInterrupt, SystemExit):
                 raise
-            except ValueError as e:
+            except ValueError:
                 pass
-            except Exception as e:
+            except Exception:
                 pass
             except:
                 pass
@@ -1177,20 +808,10 @@ def main(dumper: Dumper):
     totalTime = endTime - startTime
 
     if verbose:
-        print(
-            "Total Time: %s, Total Packets: %s, Packets/s: %s"
-            % (totalTime, counter, counter / totalTime)
-        )
+        print("Total Time: %s, Total Packets: %s, Packets/s: %s" % (totalTime, counter, counter / totalTime))
 
 
-## Parse Arguments
-try:
-    historyTime = 0
-    historyCheck = {}
-    readpcap = interface = modules = limit = directory = filter = version = dupes = ""
-    verbose = False
-    proceed = False
-
+def make_parser():
     parser = argparse.ArgumentParser(prog="Satori")
     parser.add_argument(
         "-d",
@@ -1281,7 +902,7 @@ try:
         "--format",
         action="store",
         help="Output format RAW,JSON",
-        default=FingerprintFormat.Raw.value,
+        default=FingerprintFormat.Json.value,
         choices=[mode.value for mode in FingerprintFormat],
     )
     parser.add_argument(
@@ -1292,20 +913,25 @@ try:
         help="Output file to write fingerprints in JSON format; example: -o output.json",
         default="",
     )
+    return parser
 
-    args = parser.parse_args()
+
+## Parse Arguments
+try:
+    historyTime = 0
+    historyCheck = {}
+    readpcap = interface = modules = limit = directory = filter = version = dupes = ""
+    verbose = False
+    proceed = False
+
+    args = make_parser().parse_args()
 
     if args.readpcap != "":
         if args.interface != "":
-            print(
-                "\nCannot operate in interface and readpcap mode simultaneously, please select only one."
-            )
+            print("\nCannot operate in interface and readpcap mode simultaneously, please select only one.")
             sys.exit()
         if not os.path.isfile(args.readpcap):
-            print(
-                '\nFile "%s" does not appear to exist, please verify pcap file name.'
-                % args.readpcap
-            )
+            print('\nFile "%s" does not appear to exist, please verify pcap file name.' % args.readpcap)
             sys.exit()
         else:
             proceed = True
@@ -1314,9 +940,7 @@ try:
         modules = args.modules
     if args.interface != "":
         if args.readpcap != "":
-            print(
-                "\nCannot operate in interface and readpcap mode simultaneously, please select only one."
-            )
+            print("\nCannot operate in interface and readpcap mode simultaneously, please select only one.")
             sys.exit()
         interface = args.interface
         proceed = True
@@ -1326,10 +950,7 @@ try:
         verbose = True
     if args.directory != "":
         if not os.path.isdir(args.directory):
-            print(
-                '\nDir "%s" does not appear to exist, please verify directory name.'
-                % args.directory
-            )
+            print('\nDir "%s" does not appear to exist, please verify directory name.' % args.directory)
             sys.exit()
         else:
             proceed = True
