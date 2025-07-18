@@ -26,6 +26,9 @@ from .satoriCommon import (BaseProcesser, OsFingerprint, SatoriResult,
 class SatoriResultNtp(SatoriResult):
     protocol: str = "NTP"
     signature: str
+    
+    def dump(self):
+        return self.model_dump() 
 
 
 class NtpProcesser(BaseProcesser):

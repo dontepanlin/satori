@@ -4,7 +4,7 @@ import importlib.metadata
 import xml.etree.ElementTree as ET
 from datetime import datetime
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 
 from pydantic import BaseModel
 
@@ -17,15 +17,21 @@ class OsFingerprint(BaseModel):
 
 
 class SatoriResult(BaseModel):
+    protocol: str
     client_addr: str
     client_mac: str
-    protocol: str
     fingerprint: List[OsFingerprint]
+
+    def dump(self) -> Dict[str, Any]:
+        raise NotImplementedError("Need to implement")
 
 
 class TimedSatoriResult(BaseModel):
     timestamp: datetime
     fingerprint: SatoriResult
+
+    def dump(self) -> Dict[str, Any]:
+        return {"timestamp": self.timestamp, "fingerprint": self.fingerprint.dump()}
 
 
 class BaseProcesser:
@@ -35,7 +41,7 @@ class BaseProcesser:
         """Load fingerprints from xml file"""
         raise NotImplementedError("Need to implement")
 
-    def process(self, pkt, layer, ts) -> Optional[TimedSatoriResult]:
+    def process(self, pkt, layer, ts) -> List[TimedSatoriResult]:
         """Process packet"""
         raise NotImplementedError("Need to implement")
 

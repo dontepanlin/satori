@@ -26,6 +26,9 @@ class SatoriResultTcp(SatoriResult):
     tcp_flags: str
     signature: str
 
+    def dump(self):
+        return self.model_dump() 
+
 
 class TcpProcesser(BaseProcesser):
     def __init__(self, xml_path: Optional[str] = None):

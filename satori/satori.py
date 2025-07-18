@@ -7,7 +7,6 @@ from enum import Enum
 import orjson
 from typing import Optional
 
-import pydantic
 from pypacker import ppcap, pypacker
 from pypacker.layer3 import ip
 from pypacker.layer4 import ssl, tcp, udp
@@ -253,7 +252,7 @@ def printCheck(dumper: Dumper, time_stamp, fingerprint):
 
 
 def print_result(dumper: Dumper, result: satoriCommon.TimedSatoriResult):
-    dumper.dump(result.model_dump())
+    dumper.dump(result.dump())
 
 
 def main(dumper: Dumper):
@@ -280,18 +279,13 @@ def main(dumper: Dumper):
     sshCheck = False
 
     # read in fingerprints
-    [
-        sslJA3XMLExactList,
-        sslJA3SXMLExactList,
-        sslJA3JSONExactList,
-        sslJA4XMLExactList,
-    ] = satoriSSL.BuildSSLFingerprintFiles()
-
     tcpProcess = satoriTCP.TcpProcesser()
     ntpProcess = satoriNTP.NtpProcesser()
+    sslProcess = satoriSSL.SslProcesser()
 
     tcpProcess.load_fingerprints()
     ntpProcess.load_fingerprints()
+    sslProcess.load_fingerprints()
 
     dhcp_fp = satoriDHCP.BuildDHCPFingerprintFiles()
     [useragentExactList, useragentPartialList] = satoriHTTP.BuildHTTPUserAgentFingerprintFiles()
@@ -370,19 +364,11 @@ def main(dumper: Dumper):
 
                     try:
                         if sslPacket and sslCheck:
-                            [timeStamp, fingerprints] = satoriSSL.sslProcess(
-                                pkt,
-                                layer,
-                                ts,
-                                sslJA3XMLExactList,
-                                sslJA3SXMLExactList,
-                                sslJA3JSONExactList,
-                                sslJA4XMLExactList,
-                            )
-                            for fingerprint in fingerprints:
-                                printCheck(dumper, timeStamp, fingerprint)
-                    except:
-                        pass
+                            fingerprints = sslProcess.process(pkt, layer, ts)
+                            for result in fingerprints:
+                                print_result(dumper, result)
+                    except Exception as exc:
+                        print(exc)
 
                     try:
                         if dhcpPacket and dhcpCheck:
@@ -525,19 +511,11 @@ def main(dumper: Dumper):
 
                 try:
                     if sslPacket and sslCheck:
-                        [timeStamp, fingerprints] = satoriSSL.sslProcess(
-                            pkt,
-                            layer,
-                            ts,
-                            sslJA3XMLExactList,
-                            sslJA3SXMLExactList,
-                            sslJA3JSONExactList,
-                            sslJA4XMLExactList,
-                        )
-                        for fingerprint in fingerprints:
-                            printCheck(dumper, timeStamp, fingerprint)
-                except:
-                    pass
+                        fingerprints = sslProcess.process(pkt, layer, ts)
+                        for result in fingerprints:
+                            print_result(dumper, result)
+                except Exception as exc:
+                    print(exc)
 
                 #        try:
                 #          if quicPacket and sslCheck:
@@ -684,19 +662,11 @@ def main(dumper: Dumper):
 
                 try:
                     if sslPacket and sslCheck:
-                        [timeStamp, fingerprints] = satoriSSL.sslProcess(
-                            pkt,
-                            layer,
-                            ts,
-                            sslJA3XMLExactList,
-                            sslJA3SXMLExactList,
-                            sslJA3JSONExactList,
-                            sslJA4XMLExactList,
-                        )
-                        for fingerprint in fingerprints:
-                            printCheck(dumper, timeStamp, fingerprint)
-                except:
-                    pass
+                        fingerprints = sslProcess.process(pkt, layer, ts)
+                        for result in fingerprints:
+                            print_result(dumper, result)
+                except Exception as exc:
+                    print(exc)
 
                 #        try:
                 #          if quicPacket and sslCheck:
