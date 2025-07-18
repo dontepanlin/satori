@@ -213,26 +213,17 @@ class Dumper:
     def dump(self, data):
         raise NotImplementedError("This method should be overridden by subclasses")
 
-    def dump_model(self, data: pydantic.BaseModel):
-        raise NotImplementedError("This method should be overridden by subclasses")
-
 
 class RawDumper(Dumper):
     def dump(self, data: dict):
         formatted_data = ";".join(f"{k}={v}" for k, v in data.items())
         self._file.write(formatted_data + "\n")
 
-    def dump_model(self, data: pydantic.BaseModel):
-        self._file.write(data.model_dump() + "\n")
-
 
 class JsonDumper(Dumper):
     def dump(self, data: dict):
         formatted_data = orjson.dumps(data).decode("utf-8")
         self._file.write(formatted_data + "\n")
-
-    def dump_model(self, data: pydantic.BaseModel):
-        self._file.write(data.model_dump_json() + "\n")
 
 
 FORMAT = FingerprintFormat.Json
@@ -262,7 +253,7 @@ def printCheck(dumper: Dumper, time_stamp, fingerprint):
 
 
 def print_result(dumper: Dumper, result: satoriCommon.TimedSatoriResult):
-    dumper.dump_model(result)
+    dumper.dump(result.model_dump())
 
 
 def main(dumper: Dumper):
@@ -297,7 +288,11 @@ def main(dumper: Dumper):
     ] = satoriSSL.BuildSSLFingerprintFiles()
 
     tcpProcess = satoriTCP.TcpProcesser()
+    ntpProcess = satoriNTP.NtpProcesser()
+
     tcpProcess.load_fingerprints()
+    ntpProcess.load_fingerprints()
+
     dhcp_fp = satoriDHCP.BuildDHCPFingerprintFiles()
     [useragentExactList, useragentPartialList] = satoriHTTP.BuildHTTPUserAgentFingerprintFiles()
     [serverExactList, serverPartialList] = satoriHTTP.BuildHTTPServerFingerprintFiles()
@@ -305,7 +300,6 @@ def main(dumper: Dumper):
     [nativeExactList, lanmanExactList, nativePartialList, lanmanPartialList] = satoriSMB.BuildSMBTCPFingerprintFiles()
     [browserExactList, browserPartialList] = satoriSMB.BuildSMBUDPFingerprintFiles()
     [dnsExactList, dnsPartialList] = satoriDNS.BuildDNSFingerprintFiles()
-    [ntpExactList, ntpPartialList] = satoriNTP.BuildNTPFingerprintFiles()
     [sshExactList, sshPartialList] = satoriSSH.BuildSSHFingerprintFiles()
 
     # check pypacker version due to changes between 4.9 and 5.0 for one TCP feature
@@ -471,12 +465,11 @@ def main(dumper: Dumper):
 
                     try:
                         if ntpPacket and ntpCheck:
-                            [timeStamp, fingerprint] = satoriNTP.ntpProcess(
-                                pkt, layer, ts, ntpExactList, ntpPartialList
-                            )
-                            printCheck(dumper, timeStamp, fingerprint)
-                    except:
-                        pass
+                            result = ntpProcess.process(pkt, layer, ts)
+                            if result:
+                                print_result(dumper, result)
+                    except Exception as exc:
+                        print(exc)
 
                     try:
                         if sshPacket and sshCheck:
@@ -627,8 +620,12 @@ def main(dumper: Dumper):
 
                 try:
                     if ntpPacket and ntpCheck:
-                        [timeStamp, fingerprint] = satoriNTP.ntpProcess(pkt, layer, ts, ntpExactList, ntpPartialList)
-                        printCheck(dumper, timeStamp, fingerprint)
+                        try:
+                            result = ntpProcess.process(pkt, layer, ts)
+                            if result:
+                                print_result(dumper, result)
+                        except Exception as exc:
+                            print(exc)
                 except:
                     pass
 
@@ -780,8 +777,12 @@ def main(dumper: Dumper):
 
                 try:
                     if ntpPacket and ntpCheck:
-                        [timeStamp, fingerprint] = satoriNTP.ntpProcess(pkt, layer, ts, ntpExactList, ntpPartialList)
-                        printCheck(dumper, timeStamp, fingerprint)
+                        try:
+                            result = ntpProcess.process(pkt, layer, ts)
+                            if result:
+                                print_result(dumper, result)
+                        except Exception as exc:
+                            print(exc)
                 except:
                     pass
 
