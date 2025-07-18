@@ -4,12 +4,12 @@ import struct
 from collections import defaultdict
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Optional, Dict, List
+from typing import Dict, List, Optional
 
 import untangle
 from pypacker.layer12 import ethernet
 
-from .satoriCommon import OsFingerprint, SatoriResult, TimedSatoriResult, VERSION_pypacker, BaseProcesser
+from .satoriCommon import BaseProcesser, OsFingerprint, SatoriResult, TimedSatoriResult, VERSION_pypacker
 
 # grab the latest fingerprint files:
 # wget chatteronthewire.org/download/updates/satori/fingerprints/tcp.xml -O tcp.xml
@@ -24,7 +24,7 @@ from .satoriCommon import OsFingerprint, SatoriResult, TimedSatoriResult, VERSIO
 class SatoriResultTcp(SatoriResult):
     protocol: str = "TCP"
     tcp_flags: str
-    tcp_signature: str
+    signature: str
 
 
 class TcpProcesser(BaseProcesser):
@@ -150,7 +150,7 @@ class TcpProcesser(BaseProcesser):
                 client_addr=ip4.src_s,
                 client_mac=src_mac,
                 tcp_flags=tcpFlags,
-                tcp_signature=tcpSignature,
+                signature=tcpSignature,
                 fingerprint=tcpFingerprint,
             ),
         )
