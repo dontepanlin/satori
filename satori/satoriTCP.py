@@ -145,7 +145,7 @@ class TcpProcesser(BaseProcesser):
             tcpFingerprint = tcp_fingerprint_lookup(self.syn_exact, self.syn_partial, tcpSignature)
         elif tcpFlags == "SA":
             tcpFingerprint = tcp_fingerprint_lookup(self.syn_ack_exact, self.syn_ack_partial, tcpSignature)
-        if tcpFingerprint is None:
+        if not tcpFingerprint:
             return None
         return TimedSatoriResult(
             timestamp=datetime.fromtimestamp(ts, UTC),
