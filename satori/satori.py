@@ -282,12 +282,13 @@ def main(dumper: Dumper):
     tcpProcess = satoriTCP.TcpProcesser()
     ntpProcess = satoriNTP.NtpProcesser()
     sslProcess = satoriSSL.SslProcesser()
+    dhcpProcess = satoriDHCP.DhcpProcesser()
 
     tcpProcess.load_fingerprints()
     ntpProcess.load_fingerprints()
     sslProcess.load_fingerprints()
+    dhcpProcess.load_fingerprints()
 
-    dhcp_fp = satoriDHCP.BuildDHCPFingerprintFiles()
     [useragentExactList, useragentPartialList] = satoriHTTP.BuildHTTPUserAgentFingerprintFiles()
     [serverExactList, serverPartialList] = satoriHTTP.BuildHTTPServerFingerprintFiles()
     # [icmpExactList, icmpDataExactList, icmpPartialList, icmpDataPartialList] = satoriICMP.BuildICMPFingerprintFiles()
@@ -372,17 +373,11 @@ def main(dumper: Dumper):
 
                     try:
                         if dhcpPacket and dhcpCheck:
-                            [
-                                timeStamp,
-                                fingerprintOptions,
-                                fingerprintOption55,
-                                fingerprintVendorCode,
-                            ] = satoriDHCP.dhcpProcess(pkt, layer, ts, dhcp_fp)
-                            printCheck(dumper, timeStamp, fingerprintOptions)
-                            printCheck(dumper, timeStamp, fingerprintOption55)
-                            printCheck(dumper, timeStamp, fingerprintVendorCode)
-                    except:
-                        pass
+                            fingerprints = dhcpProcess.process(pkt, layer, ts)
+                            for fingerprint in fingerprints:
+                                print_result(dumper, fingerprint)
+                    except Exception as exc:
+                        print(exc)
 
                     try:
                         if httpPacket and httpCheck:
@@ -527,17 +522,11 @@ def main(dumper: Dumper):
 
                 try:
                     if dhcpPacket and dhcpCheck:
-                        [
-                            timeStamp,
-                            fingerprintOptions,
-                            fingerprintOption55,
-                            fingerprintVendorCode,
-                        ] = satoriDHCP.dhcpProcess(pkt, layer, ts, dhcp_fp)
-                        printCheck(dumper, timeStamp, fingerprintOptions)
-                        printCheck(dumper, timeStamp, fingerprintOption55)
-                        printCheck(dumper, timeStamp, fingerprintVendorCode)
-                except:
-                    pass
+                        fingerprints = dhcpProcess.process(pkt, layer, ts)
+                        for fingerprint in fingerprints:
+                            print_result(dumper, fingerprint)
+                except Exception as exc:
+                    print(exc)
 
                 try:
                     if httpPacket and httpCheck:
@@ -678,17 +667,11 @@ def main(dumper: Dumper):
 
                 try:
                     if dhcpPacket and dhcpCheck:
-                        [
-                            timeStamp,
-                            fingerprintOptions,
-                            fingerprintOption55,
-                            fingerprintVendorCode,
-                        ] = satoriDHCP.dhcpProcess(pkt, layer, ts, dhcp_fp)
-                        printCheck(dumper, timeStamp, fingerprintOptions)
-                        printCheck(dumper, timeStamp, fingerprintOption55)
-                        printCheck(dumper, timeStamp, fingerprintVendorCode)
-                except:
-                    pass
+                        fingerprints = dhcpProcess.process(pkt, layer, ts)
+                        for fingerprint in fingerprints:
+                            print_result(dumper, fingerprint)
+                except Exception as exc:
+                    print(exc)
 
                 try:
                     if httpPacket and httpCheck:

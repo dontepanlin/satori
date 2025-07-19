@@ -9,7 +9,7 @@ from os.path import exists
 from pathlib import Path
 from pypacker.layer12 import ethernet
 from pypacker.layer4 import ssl
-from datetime import datetime, UTC
+from datetime import datetime, timezone
 from pypacker import pypacker, triggerlist
 import hashlib
 import requests
@@ -202,7 +202,7 @@ class SslProcesser(BaseProcesser):
         if len(results) == 0:
             return []
 
-        timestamp = datetime.fromtimestamp(ts, UTC)
+        timestamp = datetime.fromtimestamp(ts, tz=timezone.utc)
         fingerprints = []
 
         for fpType in results:
@@ -323,8 +323,7 @@ def quicProcess(pkt, layer, ts, sslJA4XMLExactList):
     ip4 = pkt.upper_layer
     udp1 = pkt.upper_layer.upper_layer
     print(udp1)
-
-    timeStamp = datetime.utcfromtimestamp(ts).isoformat()
+    timeStamp = datetime.fromtimestamp(ts, tz=timezone.utc)
     fingerprint = None
 
     sslFingerprint = ""

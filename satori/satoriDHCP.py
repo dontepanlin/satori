@@ -1,6 +1,6 @@
 from collections import defaultdict
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
 from typing import Dict, Optional, List
@@ -25,8 +25,8 @@ from .satoriCommon import BaseProcesser, OsFingerprint, SatoriResult
 
 @dataclass
 class DhcpOption:
-    exact: Dict[str, str] = field(default_factory=dict)
-    partial: Dict[str, str] = field(default_factory=dict)
+    exact: Dict[str, List[OsFingerprint]] = field(default_factory=lambda : defaultdict(list))
+    partial: Dict[str, List[OsFingerprint]] = field(default_factory=lambda : defaultdict(list))
 
 
 DhcpOptions = Dict[str, DhcpOption]
@@ -68,9 +68,22 @@ key_transform = {
 # Discover DiscoverOptionsExactList
 
 
+def dhch_result(client_addr, client_mac, message_type, options, os_guess_options):
+    if not os_guess_options:
+        return None
+    return {
+        "client_addr": client_addr,
+        "client_mac": client_mac,
+        "protocol": "DHCP",
+        "message_type": message_type,
+        "option_type": "Options",
+        "options": options,
+        "os_guess": os_guess_options,
+    }
+
+
 class SatoriResultDhcp(SatoriResult):
     protocol: str = "DHCP"
-    tcp_flags: str
     message_type: str
     option_type: TestResult
     options: str
@@ -83,6 +96,7 @@ class DhcpProcesser(BaseProcesser):
     def __init__(self, xml_path: Optional[str] = None):
         self.xml_path = xml_path
         self.syn_exact: Dict[str, List[OsFingerprint]] = defaultdict(list)
+        self.options: DhcpOptions = defaultdict(DhcpOption)
 
     def load_fingerprints(self):
         # converting from the xml format to a more flat format that will hopefully be faster than walking the entire xml every FP lookup
@@ -92,8 +106,6 @@ class DhcpProcesser(BaseProcesser):
         satori_path = str(Path(__file__).resolve().parent)
         obj = untangle.parse(satori_path + "/fingerprints/dhcp.xml")
         fingerprintsCount = len(obj.DHCP.fingerprints)
-
-        result: DhcpOptions = defaultdict(DhcpOption)
 
         for x in range(0, fingerprintsCount):
             os = obj.DHCP.fingerprints.fingerprint[x]["name"]
@@ -131,124 +143,100 @@ class DhcpProcesser(BaseProcesser):
                     continue
 
                 if matchtype == "exact":
-                    match_exact(dhcptype, result, os, weight, test_type, test_options)
+                    match_exact(dhcptype, self.options, os, weight, test_type, test_options)
                 elif matchtype == "partial":
-                    match_partial(dhcptype, result, os, weight, test_type, test_options)
-
-        return result
+                    match_partial(dhcptype, self.options, os, weight, test_type, test_options)
 
     def process(self, pkt, layer, ts):
-        return super().process(pkt, layer, ts)
+        if layer == "eth":
+            src_mac = pkt[ethernet.Ethernet].src_s
+        else:
+            # fake filler mac for all the others that don't have it, may have to add some elif above
+            src_mac = "00:00:00:00:00:00"
+        ip4 = pkt.upper_layer
+        udp1 = pkt.upper_layer.upper_layer
 
+        timeStamp = datetime.fromtimestamp(ts, tz=timezone.utc)
 
-def dhch_result(client_addr, client_mac, message_type, options, os_guess_options):
-    if not os_guess_options:
-        return None
-    return {
-        "client_addr": client_addr,
-        "client_mac": client_mac,
-        "protocol": "DHCP",
-        "message_type": message_type,
-        "option_type": "Options",
-        "options": options,
-        "os_guess": os_guess_options,
-    }
+        dhcp1 = pkt[dhcp.DHCP]
+        message_type = getDHCPMessageType(dhcp1.op)
+        client_addr = dhcp1.ciaddr_s
+        your_addr = dhcp1.yiaddr_s
+        next_server_addr = dhcp1.siaddr_s
+        relay_server_addr = dhcp1.giaddr_s
+        client_mac = pypacker.mac_bytes_to_str(dhcp1.chaddr[0:6])  # dump the padding is pypacker copies it all together
 
-
-def dhcpProcess(pkt, layer, ts, options: DhcpOptions):
-    if layer == "eth":
-        src_mac = pkt[ethernet.Ethernet].src_s
-    else:
-        # fake filler mac for all the others that don't have it, may have to add some elif above
-        src_mac = "00:00:00:00:00:00"
-    ip4 = pkt.upper_layer
-    udp1 = pkt.upper_layer.upper_layer
-
-    fingerprint_options = None
-    fingerprint_option55 = None
-    fingerprint_vendor_code = None
-
-    timeStamp = datetime.utcfromtimestamp(ts).isoformat()
-
-    dhcp1 = pkt[dhcp.DHCP]
-    message_type = getDHCPMessageType(dhcp1.op)
-    client_addr = dhcp1.ciaddr_s
-    your_addr = dhcp1.yiaddr_s
-    next_server_addr = dhcp1.siaddr_s
-    relay_server_addr = dhcp1.giaddr_s
-    client_mac = pypacker.mac_bytes_to_str(dhcp1.chaddr[0:6])  # dump the padding is pypacker copies it all together
-
-    [options_data, message_type, option55, vendor_code] = getDHCPOptions(dhcp1.opts)
-    message_type = message_type.name
-    if options_data:
-        fingerprint_options = dhch_result(
-            client_addr,
-            client_mac,
-            message_type,
-            options_data,
-            DHCPFingerprintLookup(
-                options[key_transform[TestResult.options](message_type)].exact,
-                options[key_transform[TestResult.options](message_type)].partial,
+        [options_data, message_type, option55, vendor_code] = getDHCPOptions(dhcp1.opts)
+        message_type = message_type.name
+        result = []
+        if options_data:
+            fingerprint = dhcp_fingerprint_lookup(
+                self.options[key_transform[TestResult.options](message_type)].exact,
+                self.options[key_transform[TestResult.options](message_type)].partial,
                 options_data,
-            ),
-        )
-    elif option55:
-        fingerprint_option55 = dhch_result(
-            client_addr,
-            client_mac,
-            message_type,
-            option55,
-            DHCPFingerprintLookup(
-                options[key_transform[TestResult.options55](message_type)].exact,
-                options[key_transform[TestResult.options55](message_type)].partial,
+            )
+            if fingerprint:
+                result.append(
+                    SatoriResultDhcp(
+                        client_addr=client_addr,
+                        client_mac=client_mac,
+                        fingerprint=fingerprint,
+                        message_type=message_type,
+                        option_type=TestResult.options,
+                        options=options_data,
+                    )
+                )
+        elif option55:
+            fingerprint = dhcp_fingerprint_lookup(
+                self.options[key_transform[TestResult.options55](message_type)].exact,
+                self.options[key_transform[TestResult.options55](message_type)].partial,
                 option55,
-            ),
-        )
-    elif vendor_code:
-        fingerprint_vendor_code = dhch_result(
-            client_addr,
-            client_mac,
-            message_type,
-            vendor_code,
-            DHCPFingerprintLookup(
-                options[key_transform[TestResult.vendor](message_type)].exact,
-                options[key_transform[TestResult.vendor](message_type)].partial,
-                vendor_code,
-            ),
-        )
+            )
+            if fingerprint:
+                result.append(
+                    SatoriResultDhcp(
+                        client_addr=client_addr,
+                        client_mac=client_mac,
+                        fingerprint=fingerprint,
+                        message_type=message_type,
+                        option_type=TestResult.options55,
+                        options=options_data,
+                    )
+                )
+        elif vendor_code:
+            fingerprint = dhcp_fingerprint_lookup(
+                self.options[key_transform[TestResult.vendor](message_type)].exact,
+                self.options[key_transform[TestResult.vendor](message_type)].partial,
+                option55,
+            )
+            if fingerprint:
+                result.append(
+                    SatoriResultDhcp(
+                        client_addr=client_addr,
+                        client_mac=client_mac,
+                        fingerprint=fingerprint,
+                        message_type=message_type,
+                        option_type=TestResult.options55,
+                        options=vendor_code,
+                    )
+                )
+        return result
 
-    # need to revisit this when not printing them as this just makes noise right now.
-    #  if messageType != None:  #last ditch check against the 'any' field ones
-    #    if options != '':
-    #      osGuessOptions = DHCPFingerprintLookup(AnyOptionsExactList, AnyOptionsPartialList, options)
-    #      print("%s;%s;%s;DHCP;%s;Options;%s;%s" % (timeStamp, clientAddr, clientMAC, messageType, options, osGuessOptions))
-    #    if option55 != '':
-    #      osGuessOption55 = DHCPFingerprintLookup(AnyOption55ExactList, AnyOption55PartialList, option55)
-    #      print("%s;%s;%s;DHCP;%s;Option55;%s;%s" % (timeStamp, clientAddr, clientMAC, messageType, option55, osGuessOption55))
-    #    if vendorCode != '':
-    #      osGuessVendorCode = DHCPFingerprintLookup(AnyVendorCodeExactList, AnyVendorCodePartialList, vendorCode)
-    #      print("%s;%s;%s;DHCP;%s;VendorCode;%s;%s" % (timeStamp, clientAddr, clientMAC, messageType, vendorCode, osGuessVendorCode))
-
-    return [
-        timeStamp,
-        fingerprint_options,
-        fingerprint_option55,
-        fingerprint_vendor_code,
-    ]
+        # need to revisit this when not printing them as this just makes noise right now.
+        #  if messageType != None:  #last ditch check against the 'any' field ones
+        #    if options != '':
+        #      osGuessOptions = DHCPFingerprintLookup(AnyOptionsExactList, AnyOptionsPartialList, options)
+        #      print("%s;%s;%s;DHCP;%s;Options;%s;%s" % (timeStamp, clientAddr, clientMAC, messageType, options, osGuessOptions))
+        #    if option55 != '':
+        #      osGuessOption55 = DHCPFingerprintLookup(AnyOption55ExactList, AnyOption55PartialList, option55)
+        #      print("%s;%s;%s;DHCP;%s;Option55;%s;%s" % (timeStamp, clientAddr, clientMAC, messageType, option55, osGuessOption55))
+        #    if vendorCode != '':
+        #      osGuessVendorCode = DHCPFingerprintLookup(AnyVendorCodeExactList, AnyVendorCodePartialList, vendorCode)
+        #      print("%s;%s;%s;DHCP;%s;VendorCode;%s;%s" % (timeStamp, clientAddr, clientMAC, messageType, vendorCode, osGuessVendorCode))
 
 
-def insert_or_append_exact(storage: DhcpOption, key: str, os: str, weight: str):
-    if key in storage.exact:
-        storage.exact[key] += "|" + os + ":" + weight
-    else:
-        storage.exact[key] = os + ":" + weight
-
-
-def insert_or_append(storage: Dict[str, str], key: str, os: str, weight: str):
-    if key in storage:
-        storage[key] += "|" + os + ":" + weight
-    else:
-        storage[key] = os + ":" + weight
+def insert_or_append(storage: Dict[str, List[OsFingerprint]], key: str, os: str, weight: int):
+    storage[key].append(OsFingerprint(os=os, weight=weight))
 
 
 def match_exact(dhcptype, result: DhcpOptions, os, weight, test_type, test):
@@ -259,30 +247,14 @@ def match_partial(dhcptype, result: DhcpOptions, os, weight, test_type, test):
     insert_or_append(result[key_transform[test_type](dhcptype)].partial, test, os, weight)
 
 
-
-def DHCPFingerprintLookup(exactList, partialList, value):
-    exactValue = ""
-    partialValue = ""
-
+def dhcp_fingerprint_lookup(exactList, partialList, value):
+    fingerprint: List[OsFingerprint] = []
     if value in exactList:
-        exactValue = exactList.get(value)
-
+        fingerprint.extend(exactList.get(value))
     for key, val in partialList.items():
         if value.find(key) > -1:
-            partialValue = partialValue + "|" + val
-
-    if partialValue.startswith("|"):
-        partialValue = partialValue[1:]
-    if partialValue.endswith("|"):
-        partialValue = partialValue[:-1]
-
-    fingerprint = exactValue + "|" + partialValue
-    if fingerprint.startswith("|"):
-        fingerprint = fingerprint[1:]
-    if fingerprint.endswith("|"):
-        fingerprint = fingerprint[:-1]
-
-    fingerprint = satoriCommon.sortFingerprint(fingerprint)
+            fingerprint.extend(val)
+    fingerprint.sort(key=lambda item: item.weight)
     return fingerprint
 
 

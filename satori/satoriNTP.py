@@ -1,5 +1,5 @@
 from collections import defaultdict
-from datetime import UTC, datetime
+from datetime import timezone, datetime
 from pathlib import Path
 from typing import Dict, List, Optional
 
@@ -178,7 +178,7 @@ class NtpProcesser(BaseProcesser):
         if not ntpFingerprint:
             return None
         return TimedSatoriResult(
-            timestamp=datetime.fromtimestamp(ts, UTC),
+            timestamp=datetime.fromtimestamp(ts, tz=timezone.utc),
             fingerprint=SatoriResultNtp(
                 client_addr=ip4.src_s,
                 client_mac=src_mac,
