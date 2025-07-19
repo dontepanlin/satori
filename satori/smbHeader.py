@@ -1,6 +1,4 @@
-from pypacker import pypacker, triggerlist
-import struct
-import untangle
+from pypacker import pypacker
 
 #from pypacker.structcbs import unpack_B
 # https://docs.python.org/3.1/library/struct.html#format-characters

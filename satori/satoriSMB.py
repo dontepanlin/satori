@@ -52,6 +52,16 @@ def parseBuffer(buf, unicode):
 
   return(val)
 
+def smb_udp_result(client_addr, client_mac, osVersion, browVersion, osGuess):
+    return {
+        "client_addr": client_addr,
+        "client_mac": client_mac,
+        "protocol": "SMBBROWSER",
+        "os_version" : osVersion,
+        "brow_version": browVersion,
+        "os_guess": osGuess
+    }
+
 def smbUDPProcess(pkt, layer, ts, browserExactList, browserPartialList):
   if layer == 'eth':
     src_mac = pkt[ethernet.Ethernet].src_s
@@ -86,7 +96,8 @@ def smbUDPProcess(pkt, layer, ts, browserExactList, browserPartialList):
       if (osVersion != '') and (browVersion != ''):
         smbFingerprint = osVersion + ';' + browVersion
         osGuess = SMBUDPFingerprintLookup(browserExactList, browserPartialList, smbFingerprint)
-        fingerprint = ip4.src_s + ';' + src_mac + ';SMBBROWSER;' + smbFingerprint + ';' + osGuess
+        if osGuess:
+          fingerprint = smb_udp_result(ip4.src_s, src_mac, osVersion, browVersion, osGuess)
 
   return [timeStamp, fingerprint]
 
