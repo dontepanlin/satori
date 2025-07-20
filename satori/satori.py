@@ -268,7 +268,7 @@ def main(dumper: Dumper):
     # general vars
     tcpCheck = False
     dhcpCheck = False
-    httpCheck = False
+    httpCheck = False  
     icmpCheck = (
         False  # not enabled in lower code at this point due to tracking features I'm not willing to code at this time.
     )
@@ -283,14 +283,16 @@ def main(dumper: Dumper):
     ntpProcess = satoriNTP.NtpProcesser()
     sslProcess = satoriSSL.SslProcesser()
     dhcpProcess = satoriDHCP.DhcpProcesser()
+    httpServerProcess= satoriHTTP.HttpServerProcesser()
+    httpUserAgentProcess = satoriHTTP.HttpUserAgentProcesser()
 
     tcpProcess.load_fingerprints()
     ntpProcess.load_fingerprints()
     sslProcess.load_fingerprints()
     dhcpProcess.load_fingerprints()
+    httpServerProcess.load_fingerprints()
+    httpUserAgentProcess.load_fingerprints()
 
-    [useragentExactList, useragentPartialList] = satoriHTTP.BuildHTTPUserAgentFingerprintFiles()
-    [serverExactList, serverPartialList] = satoriHTTP.BuildHTTPServerFingerprintFiles()
     # [icmpExactList, icmpDataExactList, icmpPartialList, icmpDataPartialList] = satoriICMP.BuildICMPFingerprintFiles()
     [nativeExactList, lanmanExactList, nativePartialList, lanmanPartialList] = satoriSMB.BuildSMBTCPFingerprintFiles()
     [browserExactList, browserPartialList] = satoriSMB.BuildSMBUDPFingerprintFiles()
@@ -381,28 +383,16 @@ def main(dumper: Dumper):
 
                     try:
                         if httpPacket and httpCheck:
-                            [
-                                timeStamp,
-                                fingerprintHdrUserAgent,
-                                fingerprintBodyUserAgent,
-                            ] = satoriHTTP.httpUserAgentProcess(
+                            fingerprints = httpUserAgentProcess.process(
                                 pkt,
                                 layer,
-                                ts,
-                                useragentExactList,
-                                useragentPartialList,
+                                ts
                             )
-                            printCheck(dumper, timeStamp, fingerprintHdrUserAgent)
-                            printCheck(dumper, timeStamp, fingerprintBodyUserAgent)
-                            [
-                                timeStamp,
-                                fingerprintHdrServer,
-                                fingerprintBodyServer,
-                            ] = satoriHTTP.httpServerProcess(pkt, layer, ts, serverExactList, serverPartialList)
-                            printCheck(dumper, timeStamp, fingerprintHdrServer)
-                            printCheck(dumper, timeStamp, fingerprintBodyServer)
-                    except:
-                        pass
+                            fingerprints.extend(httpServerProcess.process(pkt, layer, ts))
+                            for result in fingerprints:
+                                print_result(dumper, result)
+                    except Exception as exc: 
+                        print(exc)
 
                     #            try:
                     #              if (eth[ethernet.Ethernet, ip.IP, icmp.ICMP] is not None) and icmpCheck:
@@ -530,18 +520,18 @@ def main(dumper: Dumper):
 
                 try:
                     if httpPacket and httpCheck:
-                        [
-                            timeStamp,
-                            fingerprintHdrUserAgent,
-                            fingerprintBodyUserAgent,
-                        ] = satoriHTTP.httpUserAgentProcess(pkt, layer, ts, useragentExactList, useragentPartialList)
-                        printCheck(dumper, timeStamp, fingerprintHdrUserAgent)
-                        printCheck(dumper, timeStamp, fingerprintBodyUserAgent)
-                        [timeStamp, fingerprintHdrServer, fingerprintBodyServer] = satoriHTTP.httpServerProcess(
-                            pkt, layer, ts, serverExactList, serverPartialList
-                        )
-                        printCheck(dumper, timeStamp, fingerprintHdrServer)
-                        printCheck(dumper, timeStamp, fingerprintBodyServer)
+                        try:
+                            if httpPacket and httpCheck:
+                                fingerprints = httpUserAgentProcess.process(
+                                    pkt,
+                                    layer,
+                                    ts
+                                )
+                                fingerprints.extend(httpServerProcess.process(pkt, layer, ts))
+                                for result in fingerprints:
+                                    print_result(dumper, result)
+                        except Exception as exc: 
+                            print(exc)
                 except:
                     pass
 
@@ -675,18 +665,18 @@ def main(dumper: Dumper):
 
                 try:
                     if httpPacket and httpCheck:
-                        [
-                            timeStamp,
-                            fingerprintHdrUserAgent,
-                            fingerprintBodyUserAgent,
-                        ] = satoriHTTP.httpUserAgentProcess(pkt, layer, ts, useragentExactList, useragentPartialList)
-                        printCheck(dumper, timeStamp, fingerprintHdrUserAgent)
-                        printCheck(dumper, timeStamp, fingerprintBodyUserAgent)
-                        [timeStamp, fingerprintHdrServer, fingerprintBodyServer] = satoriHTTP.httpServerProcess(
-                            pkt, layer, ts, serverExactList, serverPartialList
-                        )
-                        printCheck(dumper, timeStamp, fingerprintHdrServer)
-                        printCheck(dumper, timeStamp, fingerprintBodyServer)
+                        try:
+                            if httpPacket and httpCheck:
+                                fingerprints = httpUserAgentProcess.process(
+                                    pkt,
+                                    layer,
+                                    ts
+                                )
+                                fingerprints.extend(httpServerProcess.process(pkt, layer, ts))
+                                for result in fingerprints:
+                                    print_result(dumper, result)
+                        except Exception as exc: 
+                            print(exc)
                 except:
                     pass
 

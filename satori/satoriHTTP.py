@@ -1,8 +1,10 @@
 import untangle
-from . import satoriCommon
+from .satoriCommon import OsFingerprint, SatoriResult, BaseProcesser, TimedSatoriResult
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timezone
 from pypacker.layer12 import ethernet
+from typing import Dict, List, Optional
+from collections import defaultdict
 
 # grab the latest fingerprint files:
 # wget chatteronthewire.org/download/updates/satori/fingerprints/tcp.xml -O tcp.xml
@@ -14,207 +16,209 @@ from pypacker.layer12 import ethernet
 #
 
 
-def version():
-    dateReleased='satoriHTTP.py - 2024-04-06'
-    print(dateReleased)
+class SatoriResultHttpServer(SatoriResult):
+    protocol: str = "HTTP"
+    server_header: str
+
+    def dump(self):
+        return self.model_dump()
 
 
-def httpServerProcess(pkt, layer, ts, serverExactList, serverPartialList):
-    if layer == 'eth':
-        src_mac = pkt[ethernet.Ethernet].src_s
-    else:
-        #fake filler mac for all the others that don't have it, may have to add some elif above
-        src_mac = '00:00:00:00:00:00'
+class SatoriResultHttpUserAgent(SatoriResult):
+    protocol: str = "HTTP"
+    useragent_header: str
 
-    ip4 = pkt.upper_layer
-    tcp1 = pkt.upper_layer.upper_layer
-    http1 = pkt.upper_layer.upper_layer.upper_layer
-
-    timeStamp = datetime.utcfromtimestamp(ts).isoformat()
-    hdrServer = ''
-    bodyServer = ''
-
-    try:
-        if (http1.hdr != None) and (http1.hdr):
-            hdr = dict(http1.hdr)
-            hdrServer = hdr[b'Server'].decode("utf-8", "strict")
-        if (http1.body_bytes):
-            body = http1.body_bytes.decode("utf-8", "strict")
-            i = body.find("Server: ")
-            if i > 1:
-                v = body[i:]
-                i = v.find("\n")
-                v = v[:i]
-                i = v.find(":")
-                bodyServer = v[i+1:].strip()
-    except Exception:
-        pass
-
-    fingerprintHdrServer = None
-    fingerprintBodyServer = None
-
-    if (hdrServer != ''):
-        httpServerFingerprint = fingerprintLookup(serverExactList, serverPartialList, hdrServer)
-        #not ideal but converting any ; to | for parsing reasons!
-        #    changedUserAgent = hdrUserAgent.replace(';', '|')
-        fingerprintHdrServer = ip4.src_s + ';' + src_mac + ';HTTPSERVER;' + hdrServer + ';' + httpServerFingerprint
-    if (bodyServer != ''):
-        httpServerFingerprint = fingerprintLookup(serverExactList, serverPartialList, bodyServer)
-        #not ideal but converting any ; to | for parsing reasons!
-        #    changedUserAgent = bodyUserAgent.replace(';', '|')
-        fingerprintBodyServer = ip4.src_s + ';' + src_mac + ';HTTPSERVER;' + bodyServer + ';' + httpServerFingerprint
-    return [timeStamp, fingerprintHdrServer, fingerprintBodyServer]
+    def dump(self):
+        return self.model_dump()
 
 
-def httpUserAgentProcess(pkt, layer, ts, useragentExactList, useragentPartialList):
-    if layer == 'eth':
-        src_mac = pkt[ethernet.Ethernet].src_s
-    else:
-        #fake filler mac for all the others that don't have it, may have to add some elif above
-        src_mac = '00:00:00:00:00:00'
+class HttpServerProcesser(BaseProcesser):
+    def __init__(self, xml_path: Optional[str] = None):
+        self.xml_path = xml_path
+        self.exact: Dict[str, List[OsFingerprint]] = defaultdict(list)
+        self.partial: Dict[str, List[OsFingerprint]] = defaultdict(list)
 
-    ip4 = pkt.upper_layer
-    tcp1 = pkt.upper_layer.upper_layer
-    http1 = pkt.upper_layer.upper_layer.upper_layer
+    def load_fingerprints(self):
+        # converting from the xml format to a more flat format that will hopefully be faster than walking the entire xml every FP lookup
+        satoriPath = str(Path(__file__).resolve().parent)
 
-    timeStamp = datetime.utcfromtimestamp(ts).isoformat()
-    hdrUserAgent = ''
-    bodyUserAgent = ''
-
-    try:
-        if (http1.hdr != None) and (http1.hdr):
-            hdr = dict(http1.hdr)
-            hdrUserAgent = hdr[b'User-Agent'].decode("utf-8", "strict")
-        if (http1.body_bytes):
-            body = http1.body_bytes.decode("utf-8", "strict")
-            i = body.find("User-Agent: ")
-            if i > 1:
-                v = body[i:]
-                i = v.find("\n")
-                v = v[:i]
-                i = v.find(":")
-                bodyUserAgent = v[i+1:].strip()
-    except Exception:
-        pass
-
-    fingerprintHdrUserAgent = None
-    fingerprintBodyUserAgent = None
-
-    if (hdrUserAgent != ''):
-        httpUserAgentFingerprint = fingerprintLookup(useragentExactList, useragentPartialList, hdrUserAgent)
-        #not ideal but converting any ; to | for parsing reasons!
-        changedUserAgent = hdrUserAgent.replace(';', '|').replace("\n", "").replace("\r", "").strip()
-        fingerprintHdrUserAgent = ip4.src_s + ';' + src_mac + ';USERAGENT;' + changedUserAgent + ';' + httpUserAgentFingerprint
-    if (bodyUserAgent != ''):
-        httpUserAgentFingerprint = fingerprintLookup(useragentExactList, useragentPartialList, bodyUserAgent)
-        #not ideal but converting any ; to | for parsing reasons!
-        changedUserAgent = bodyUserAgent.replace(';', '|').replace("\n", "").replace("\r", "").strip()
-        fingerprintBodyUserAgent = ip4.src_s + ';' + src_mac + ';USERAGENT;' + changedUserAgent + ';' + httpUserAgentFingerprint
-
-    return [timeStamp, fingerprintHdrUserAgent, fingerprintBodyUserAgent]
-
-
-def BuildHTTPServerFingerprintFiles():
-    # converting from the xml format to a more flat format that will hopefully be faster than walking the entire xml every FP lookup
-    serverExactList = {}
-    serverPartialList = {}
-
-    satoriPath = str(Path(__file__).resolve().parent)
-
-    obj = untangle.parse(satoriPath + '/fingerprints/web.xml')
-    fingerprintsCount = len(obj.WEBSERVER.fingerprints)
-    for x in range(0,fingerprintsCount):
-        os = obj.WEBSERVER.fingerprints.fingerprint[x]['name']
-        testsCount = len(obj.WEBSERVER.fingerprints.fingerprint[x].webserver_tests)
-        test = {}
-        for y in range(0,testsCount):
-            test = obj.WEBSERVER.fingerprints.fingerprint[x].webserver_tests.test[y]
-            if test is None:  #if testsCount = 1, then untangle doesn't allow us to iterate through it
-                test = obj.WEBSERVER.fingerprints.fingerprint[x].webserver_tests.test
-            matchtype = test['matchtype']
-            webserver = test['webserver']
-            weight = test['weight']
-            if matchtype == 'exact':
-                if webserver in serverExactList:
-                    oldValue = serverExactList.get(webserver)
-                    serverExactList[webserver] = oldValue + '|' + os + ':' + weight
+        obj = untangle.parse(satoriPath + "/fingerprints/web.xml")
+        for x in range(0, len(obj.WEBSERVER.fingerprints)):
+            os = obj.WEBSERVER.fingerprints.fingerprint[x]["name"]
+            test = {}
+            for y in range(0, len(obj.WEBSERVER.fingerprints.fingerprint[x].webserver_tests)):
+                test = obj.WEBSERVER.fingerprints.fingerprint[x].webserver_tests.test[y]
+                if test is None:  # if testsCount = 1, then untangle doesn't allow us to iterate through it
+                    test = obj.WEBSERVER.fingerprints.fingerprint[x].webserver_tests.test
+                matchtype = test["matchtype"]
+                webserver = test["webserver"]
+                weight = test["weight"]
+                if matchtype == "exact":
+                    self.exact[webserver].append(OsFingerprint(os=os, weight=weight))
                 else:
-                    serverExactList[webserver] = os + ':' + weight
-            else:
-                if webserver in serverPartialList:
-                    oldValue = serverPartialList.get(webserver)
-                    serverPartialList[webserver] = oldValue + '|' + os + ':' + weight
+                    self.partial[webserver].append(OsFingerprint(os=os, weight=weight))
+
+    def process(self, pkt, layer, ts):
+        if layer == "eth":
+            src_mac = pkt[ethernet.Ethernet].src_s
+        else:
+            # fake filler mac for all the others that don't have it, may have to add some elif above
+            src_mac = "00:00:00:00:00:00"
+
+        ip4 = pkt.upper_layer
+        tcp1 = pkt.upper_layer.upper_layer
+        http1 = pkt.upper_layer.upper_layer.upper_layer
+
+        hdrServer = ""
+        bodyServer = ""
+
+        result: List[TimedSatoriResult] = []
+
+        try:
+            if (http1.hdr is not None) and (http1.hdr):
+                hdr = dict(http1.hdr)
+                hdrServer = hdr[b"Server"].decode("utf-8", "strict")
+            if http1.body_bytes:
+                body = http1.body_bytes.decode("utf-8", "strict")
+                i = body.find("Server: ")
+                if i > 1:
+                    v = body[i:]
+                    i = v.find("\n")
+                    v = v[:i]
+                    i = v.find(":")
+                    bodyServer = v[i + 1 :].strip()
+        except Exception:
+            pass
+
+        timestamp = datetime.fromtimestamp(ts, tz=timezone.utc)
+
+        if hdrServer:
+            fingerprint = http_fingerprint_lookup(self.exact, self.partial, hdrServer)
+            if fingerprint:
+                result.append(
+                    TimedSatoriResult(
+                        timestamp=timestamp,
+                        fingerprint=SatoriResultHttpServer(
+                            client_addr=ip4.src_s, client_mac=src_mac, fingerprint=fingerprint, server_header=hdrServer
+                        ),
+                    )
+                )
+
+        if bodyServer:
+            fingerprint = http_fingerprint_lookup(self.exact, self.partial, bodyServer)
+            if fingerprint:
+                result.append(
+                    TimedSatoriResult(
+                        timestamp=timestamp,
+                        fingerprint=SatoriResultHttpServer(
+                            client_addr=ip4.src_s, client_mac=src_mac, fingerprint=fingerprint, server_header=bodyServer
+                        ),
+                    )
+                )
+        return result
+
+
+class HttpUserAgentProcesser(BaseProcesser):
+    def __init__(self, xml_path: Optional[str] = None):
+        self.xml_path = xml_path
+        self.exact: Dict[str, List[OsFingerprint]] = defaultdict(list)
+        self.partial: Dict[str, List[OsFingerprint]] = defaultdict(list)
+
+    def load_fingerprints(self):
+        # converting from the xml format to a more flat format that will hopefully be faster than walking the entire xml every FP lookup
+
+        satoriPath = str(Path(__file__).resolve().parent)
+        obj = untangle.parse(satoriPath + "/fingerprints/webuseragent.xml")
+
+        for x in range(0, len(obj.WEBUSERAGENT.fingerprints)):
+            os = obj.WEBUSERAGENT.fingerprints.fingerprint[x]["name"]
+            for y in range(0, len(obj.WEBUSERAGENT.fingerprints.fingerprint[x].webuseragent_tests)):
+                test = obj.WEBUSERAGENT.fingerprints.fingerprint[x].webuseragent_tests.test[y]
+                if test is None:  # if testsCount = 1, then untangle doesn't allow us to iterate through it
+                    test = obj.WEBUSERAGENT.fingerprints.fingerprint[x].webuseragent_tests.test
+                matchtype = test["matchtype"]
+                webuseragent = test["webuseragent"]
+                weight = test["weight"]
+                if matchtype == "exact":
+                    self.exact[webuseragent].append(OsFingerprint(os=os, weight=weight))
                 else:
-                    serverPartialList[webserver] = os + ':' + weight
+                    self.partial[webuseragent].append(OsFingerprint(os=os, weight=weight))
 
-    return [serverExactList, serverPartialList]
+    def process(self, pkt, layer, ts):
+        if layer == "eth":
+            src_mac = pkt[ethernet.Ethernet].src_s
+        else:
+            # fake filler mac for all the others that don't have it, may have to add some elif above
+            src_mac = "00:00:00:00:00:00"
+
+        ip4 = pkt.upper_layer
+        http1 = pkt.upper_layer.upper_layer.upper_layer
+
+        hdrUserAgent = ""
+        bodyUserAgent = ""
+
+        result: List[TimedSatoriResult] = []
+
+        try:
+            if (http1.hdr != None) and (http1.hdr):
+                hdr = dict(http1.hdr)
+                hdrUserAgent = hdr[b"User-Agent"].decode("utf-8", "strict")
+            if http1.body_bytes:
+                body = http1.body_bytes.decode("utf-8", "strict")
+                i = body.find("User-Agent: ")
+                if i > 1:
+                    v = body[i:]
+                    i = v.find("\n")
+                    v = v[:i]
+                    i = v.find(":")
+                    bodyUserAgent = v[i + 1 :].strip()
+        except Exception:
+            pass
+
+        timestamp = datetime.fromtimestamp(ts, tz=timezone.utc)
+
+        if hdrUserAgent:
+            fingerprint = http_fingerprint_lookup(self.exact, self.partial, hdrUserAgent)
+            if fingerprint:
+                result.append(
+                    TimedSatoriResult(
+                        timestamp=timestamp,
+                        fingerprint=SatoriResultHttpUserAgent(
+                            client_addr=ip4.src_s,
+                            client_mac=src_mac,
+                            fingerprint=fingerprint,
+                            useragent_header=hdrUserAgent,
+                        ),
+                    )
+                )
+        if bodyUserAgent:
+            fingerprint = http_fingerprint_lookup(self.exact, self.partial, bodyUserAgent)
+            if fingerprint:
+                result.append(
+                    TimedSatoriResult(
+                        timestamp=timestamp,
+                        fingerprint=SatoriResultHttpUserAgent(
+                            client_addr=ip4.src_s,
+                            client_mac=src_mac,
+                            fingerprint=fingerprint,
+                            useragent_header=bodyUserAgent,
+                        ),
+                    )
+                )
+
+        return result
 
 
-
-def BuildHTTPUserAgentFingerprintFiles():
-    # converting from the xml format to a more flat format that will hopefully be faster than walking the entire xml every FP lookup
-    useragentExactList = {}
-    useragentPartialList = {}
-
-    satoriPath = str(Path(__file__).resolve().parent)
-
-    obj = untangle.parse(satoriPath + '/fingerprints/webuseragent.xml')
-    fingerprintsCount = len(obj.WEBUSERAGENT.fingerprints)
-    for x in range(0,fingerprintsCount):
-        os = obj.WEBUSERAGENT.fingerprints.fingerprint[x]['name']
-        testsCount = len(obj.WEBUSERAGENT.fingerprints.fingerprint[x].webuseragent_tests)
-        test = {}
-        for y in range(0,testsCount):
-            test = obj.WEBUSERAGENT.fingerprints.fingerprint[x].webuseragent_tests.test[y]
-            if test is None:  #if testsCount = 1, then untangle doesn't allow us to iterate through it
-                test = obj.WEBUSERAGENT.fingerprints.fingerprint[x].webuseragent_tests.test
-            matchtype = test['matchtype']
-            webuseragent = test['webuseragent']
-            weight = test['weight']
-            if matchtype == 'exact':
-                if webuseragent in useragentExactList:
-                    oldValue = useragentExactList.get(webuseragent)
-                    useragentExactList[webuseragent] = oldValue + '|' + os + ':' + weight
-                else:
-                    useragentExactList[webuseragent] = os + ':' + weight
-            else:
-                if webuseragent in useragentPartialList:
-                    oldValue = useragentPartialList.get(webuseragent)
-                    useragentPartialList[webuseragent] = oldValue + '|' + os + ':' + weight
-                else:
-                    useragentPartialList[webuseragent] = os + ':' + weight
-
-    return [useragentExactList, useragentPartialList]
-
-
-def fingerprintLookup(exactList, partialList, value):
-    #same as DHCP one, may be able to look at combining in the future?
-    exactValue = ''
-    partialValue = ''
-
+def http_fingerprint_lookup(exactList, partialList, value) -> List[OsFingerprint]:
+    # same as DHCP one, may be able to look at combining in the future?
+    fingerprint = []
     if value in exactList:
-        exactValue = exactList.get(value)
+        fingerprint.extend(exactList.get(value))
 
     for key, val in partialList.items():
         if value.find(key) > -1:
-            partialValue = partialValue + '|' + val
+            fingerprint.extend(val)
 
-    if partialValue.startswith('|'):
-        partialValue = partialValue[1:]
-    if partialValue.endswith('|'):
-        partialValue = partialValue[:-1]
+    fingerprint.sort(key=lambda item: item.weight)
 
-    fingerprint = exactValue + '|' + partialValue
-    if fingerprint.startswith('|'):
-        fingerprint = fingerprint[1:]
-    if fingerprint.endswith('|'):
-        fingerprint = fingerprint[:-1]
-
-    fingerprint = satoriCommon.sortFingerprint(fingerprint)
     return fingerprint
-
-
-
-
-
-

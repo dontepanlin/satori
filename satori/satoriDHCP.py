@@ -67,21 +67,6 @@ key_transform = {
 
 # Discover DiscoverOptionsExactList
 
-
-def dhch_result(client_addr, client_mac, message_type, options, os_guess_options):
-    if not os_guess_options:
-        return None
-    return {
-        "client_addr": client_addr,
-        "client_mac": client_mac,
-        "protocol": "DHCP",
-        "message_type": message_type,
-        "option_type": "Options",
-        "options": options,
-        "os_guess": os_guess_options,
-    }
-
-
 class SatoriResultDhcp(SatoriResult):
     protocol: str = "DHCP"
     message_type: str
