@@ -147,7 +147,7 @@ class TcpProcesser(BaseProcesser):
             tcpFingerprint = tcp_fingerprint_lookup(self.syn_ack_exact, self.syn_ack_partial, tcpSignature)
         if not tcpFingerprint:
             return None
-        return TimedSatoriResult(
+        return [TimedSatoriResult(
             timestamp=datetime.fromtimestamp(ts, tz=timezone.utc),
             fingerprint=SatoriResultTcp(
                 client_addr=ip4.src_s,
@@ -156,7 +156,7 @@ class TcpProcesser(BaseProcesser):
                 signature=tcpSignature,
                 fingerprint=tcpFingerprint,
             ),
-        )
+        )]
 
 
 def tcp_fingerprint_lookup(exact, partial, signature):

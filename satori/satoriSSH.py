@@ -1,9 +1,13 @@
-import untangle
-from . import satoriCommon
+from collections import defaultdict
+from datetime import datetime, timezone
 from pathlib import Path
-from datetime import datetime
-from pypacker.layer12 import ethernet
+from typing import Dict, List, Optional
+
+import untangle
 from pypacker.layer3 import ip
+from pypacker.layer12 import ethernet
+
+from .satoriCommon import BaseProcesser, OsFingerprint, SatoriResult, TimedSatoriResult
 
 # grab the latest fingerprint files:
 # wget chatteronthewire.org/download/updates/satori/fingerprints/tcp.xml -O tcp.xml
@@ -15,106 +19,80 @@ from pypacker.layer3 import ip
 #
 
 
-def version():
-  dateReleased='satoriSSH.py - 2024-01-06'
-  print(dateReleased)
+class SatoriResultSsh(SatoriResult):
+    protocol: str = "SSH"
+    banner: str
+
+    def dump(self):
+        return self.model_dump()
 
 
-def sshProcess(pkt, layer, ts, sshExactList, sshPartialList):
-  if layer == 'eth':
-    src_mac = pkt[ethernet.Ethernet].src_s
-  else:
-    #fake filler mac for all the others that don't have it, may have to add some elif above
-    src_mac = '00:00:00:00:00:00'
+class SshProcesser(BaseProcesser):
+    def __init__(self, xml_path: Optional[str] = None):
+        self.xml_path = xml_path
+        self.exact: Dict[str, List[OsFingerprint]] = defaultdict(list)
+        self.partial: Dict[str, List[OsFingerprint]] = defaultdict(list)
 
-  ip4 = pkt.upper_layer
-  tcp1 = pkt.upper_layer.upper_layer
+    def load_fingerprints(self):
+        satoriPath = str(Path(__file__).resolve().parent)
+        obj = untangle.parse(satoriPath + "/fingerprints/ssh.xml")
+        for x in range(0, len(obj.SSH.fingerprints)):
+            os = obj.SSH.fingerprints.fingerprint[x]["name"]
+            for y in range(0, len(obj.SSH.fingerprints.fingerprint[x].ssh_tests)):
+                test = obj.SSH.fingerprints.fingerprint[x].ssh_tests.test[y]
+                if test is None:  # if testsCount = 1, then untangle doesn't allow us to iterate through it
+                    test = obj.SSH.fingerprints.fingerprint[x].ssh_tests.test
+                matchtype = test["matchtype"]
+                ssh = test["ssh"]
+                weight = test["weight"]
+                if matchtype == "exact":
+                    self.exact[ssh].append(OsFingerprint(os=os, weight=weight))
+                else:
+                    self.partial[ssh].append(OsFingerprint(os=os, weight=weight))
 
-  timeStamp = datetime.utcfromtimestamp(ts).isoformat()
-  ssh = ''
-
-  try:
-    temp = tcp1.body_bytes.decode("utf-8").strip()
-    #may need to expand this test in the future, but don't want to only do port 22 for example, so simple test for now.
-    if temp[0:3] == 'SSH':
-      ssh = temp
-  except:
-    pass
-
-  fingerprintSSH = None
-
-  if (ssh != ''):
-    sshFingerprint = fingerprintLookup(sshExactList, sshPartialList, ssh)
-    fingerprintSSH = ip4.src_s + ';' + src_mac + ';SSH;' + ssh + ';' + sshFingerprint
-
-  return [timeStamp, fingerprintSSH]
-
-
-def BuildSSHFingerprintFiles():
-  # converting from the xml format to a more flat format that will hopefully be faster than walking the entire xml every FP lookup
-  serverExactList = {}
-  serverPartialList = {}
-
-  satoriPath = str(Path(__file__).resolve().parent)
-
-  obj = untangle.parse(satoriPath + '/fingerprints/ssh.xml')
-  fingerprintsCount = len(obj.SSH.fingerprints)
-  for x in range(0,fingerprintsCount):
-    os = obj.SSH.fingerprints.fingerprint[x]['name']
-    testsCount = len(obj.SSH.fingerprints.fingerprint[x].ssh_tests)
-    test = {}
-    for y in range(0,testsCount):
-      test = obj.SSH.fingerprints.fingerprint[x].ssh_tests.test[y]
-      if test is None:  #if testsCount = 1, then untangle doesn't allow us to iterate through it
-        test = obj.SSH.fingerprints.fingerprint[x].ssh_tests.test
-      matchtype = test['matchtype']
-      ssh = test['ssh']
-      weight = test['weight']
-      if matchtype == 'exact':
-        if ssh in serverExactList:
-          oldValue = serverExactList.get(ssh)
-          serverExactList[ssh] = oldValue + '|' + os + ':' + weight
+    def process(self, pkt, layer, ts) -> List[TimedSatoriResult]:
+        if layer == "eth":
+            src_mac = pkt[ethernet.Ethernet].src_s
         else:
-          serverExactList[ssh] = os + ':' + weight
-      else:
-        if ssh in serverPartialList:
-          oldValue = serverPartialList.get(ssh)
-          serverPartialList[ssh] = oldValue + '|' + os + ':' + weight
-        else:
-          serverPartialList[ssh] = os + ':' + weight
+            # fake filler mac for all the others that don't have it, may have to add some elif above
+            src_mac = "00:00:00:00:00:00"
 
-  return [serverExactList, serverPartialList]
+        ip4 = pkt.upper_layer
+        tcp1 = pkt.upper_layer.upper_layer
 
+        ssh = ""
 
+        temp = tcp1.body_bytes.decode("utf-8").strip()
+        # may need to expand this test in the future, but don't want to only do port 22 for example, so simple test for now.
+        if temp[0:3] == "SSH":
+            ssh = temp
 
-def fingerprintLookup(exactList, partialList, value):
-  #same as DHCP one, may be able to look at combining in the future?
-  exactValue = ''
-  partialValue = ''
+        if ssh == "":
+            return []
+        sshFingerprint = ssh_fingerprint_lookup(self.exact, self.partial, ssh)
+        if not sshFingerprint:
+            return []
 
-  if value in exactList:
-    exactValue = exactList.get(value)
-
-  for key, val in partialList.items():
-    if value.find(key) > -1:
-      partialValue = partialValue + '|' + val
-
-  if partialValue.startswith('|'):
-    partialValue = partialValue[1:]
-  if partialValue.endswith('|'):
-    partialValue = partialValue[:-1]
-
-  fingerprint = exactValue + '|' + partialValue
-  if fingerprint.startswith('|'):
-    fingerprint = fingerprint[1:]
-  if fingerprint.endswith('|'):
-    fingerprint = fingerprint[:-1]
-
-  fingerprint = satoriCommon.sortFingerprint(fingerprint)
-  return fingerprint
+        return [
+            TimedSatoriResult(
+                timestamp=datetime.fromtimestamp(ts, tz=timezone.utc),
+                fingerprint=SatoriResultSsh(
+                    client_addr=ip4.src_s, client_mac=src_mac, fingerprint=sshFingerprint, banner=ssh
+                ),
+            )
+        ]
 
 
+def ssh_fingerprint_lookup(exactList, partialList, value) -> List[OsFingerprint]:
+    # same as DHCP one, may be able to look at combining in the future?
+    fingerprint = []
+    if value in exactList:
+        fingerprint.extend(exactList.get(value))
 
+    for key, val in partialList.items():
+        if value.find(key) > -1:
+            fingerprint.extend(val)
 
+    fingerprint.sort(key=lambda item: item.weight)
 
-
+    return fingerprint

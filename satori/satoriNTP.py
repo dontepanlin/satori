@@ -177,7 +177,7 @@ class NtpProcesser(BaseProcesser):
 
         if not ntpFingerprint:
             return None
-        return TimedSatoriResult(
+        return [TimedSatoriResult(
             timestamp=datetime.fromtimestamp(ts, tz=timezone.utc),
             fingerprint=SatoriResultNtp(
                 client_addr=ip4.src_s,
@@ -185,7 +185,7 @@ class NtpProcesser(BaseProcesser):
                 signature=fingerprint,
                 fingerprint=ntpFingerprint,
             ),
-        )
+        )]
 
 
 def get16bitSecs(value):

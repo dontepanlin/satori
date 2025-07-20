@@ -1,14 +1,14 @@
+from collections import defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional, Dict, List
-from collections import defaultdict
+from typing import Dict, List, Optional
+
 import untangle
 from pypacker import pypacker
 from pypacker.layer3 import ip
 from pypacker.layer12 import ethernet
 from pypacker.layer567 import dns
 
-from . import satoriCommon
 from .satoriCommon import BaseProcesser, OsFingerprint, SatoriResult, TimedSatoriResult
 
 # grab the latest fingerprint files:
@@ -83,12 +83,14 @@ class DnsProcesser(BaseProcesser):
         if not dnsFingerprint:
             return []
 
-        return [TimedSatoriResult(
-            timestamp=datetime.fromtimestamp(ts, tz=timezone.utc),
-            fingerprint=SatoriResultDns(
-                client_addr=ip4.src_s, client_mac=src_mac, fingerprint=dnsFingerprint, domain=dnsAnswer
+        return [
+            TimedSatoriResult(
+                timestamp=datetime.fromtimestamp(ts, tz=timezone.utc),
+                fingerprint=SatoriResultDns(
+                    client_addr=ip4.src_s, client_mac=src_mac, fingerprint=dnsFingerprint, domain=dnsAnswer
+                ),
             )
-        )]
+        ]
 
 
 def dns_fingerprint_lookup(exactList, partialList, value) -> List[OsFingerprint]:

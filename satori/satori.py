@@ -286,6 +286,7 @@ def main(dumper: Dumper):
     httpServerProcess = satoriHTTP.HttpServerProcesser()
     httpUserAgentProcess = satoriHTTP.HttpUserAgentProcesser()
     dnsProcess = satoriDNS.DnsProcesser()
+    sshProcess = satoriSSH.SshProcesser()
 
     tcpProcess.load_fingerprints()
     ntpProcess.load_fingerprints()
@@ -294,12 +295,11 @@ def main(dumper: Dumper):
     httpServerProcess.load_fingerprints()
     httpUserAgentProcess.load_fingerprints()
     dnsProcess.load_fingerprints()
+    sshProcess.load_fingerprints()
 
     # [icmpExactList, icmpDataExactList, icmpPartialList, icmpDataPartialList] = satoriICMP.BuildICMPFingerprintFiles()
     [nativeExactList, lanmanExactList, nativePartialList, lanmanPartialList] = satoriSMB.BuildSMBTCPFingerprintFiles()
     [browserExactList, browserPartialList] = satoriSMB.BuildSMBUDPFingerprintFiles()
-
-    [sshExactList, sshPartialList] = satoriSSH.BuildSSHFingerprintFiles()
 
     # check pypacker version due to changes between 4.9 and 5.0 for one TCP feature
 
@@ -363,10 +363,9 @@ def main(dumper: Dumper):
                     ) = packetType(buf)
 
                     if tcpPacket and tcpCheck:
-                        result = tcpProcess.process(pkt, layer, ts)
-                        if result:
+                        fingerprints = tcpProcess.process(pkt, layer, ts)
+                        for result in fingerprints:
                             print_result(dumper, result)
-
                     try:
                         if sslPacket and sslCheck:
                             fingerprints = sslProcess.process(pkt, layer, ts)
@@ -431,22 +430,20 @@ def main(dumper: Dumper):
                     except Exception as exc:
                         print(exc)
 
-                    try:
-                        if ntpPacket and ntpCheck:
-                            result = ntpProcess.process(pkt, layer, ts)
-                            if result:
+                    if ntpPacket and ntpCheck:
+                        try:
+                            fingerprints = ntpProcess.process(pkt, layer, ts)
+                            for result in fingerprints:
                                 print_result(dumper, result)
-                    except Exception as exc:
-                        print(exc)
-
-                    try:
-                        if sshPacket and sshCheck:
-                            [timeStamp, fingerprint] = satoriSSH.sshProcess(
-                                pkt, layer, ts, sshExactList, sshPartialList
-                            )
-                            printCheck(dumper, timeStamp, fingerprint)
-                    except:
-                        pass
+                        except Exception as exc:
+                            print(exc)
+                    if sshPacket and sshCheck:
+                        try:
+                            fingerprints = sshProcess.process(pkt, layer, ts)
+                            for result in fingerprints:
+                                print_result(dumper, result)
+                        except Exception as exc:
+                            print(exc)
 
                 except (KeyboardInterrupt, SystemExit):
                     raise
@@ -485,8 +482,8 @@ def main(dumper: Dumper):
 
                 if tcpPacket and tcpCheck:
                     try:
-                        result = tcpProcess.process(pkt, layer, ts)
-                        if result:
+                        fingerprints = tcpProcess.process(pkt, layer, ts)
+                        for result in fingerprints:
                             print_result(dumper, result)
                     except Exception as exc:
                         print(exc)
@@ -569,23 +566,21 @@ def main(dumper: Dumper):
                 except Exception as exc:
                     print(exc)
 
-                try:
-                    if ntpPacket and ntpCheck:
-                        try:
-                            result = ntpProcess.process(pkt, layer, ts)
-                            if result:
-                                print_result(dumper, result)
-                        except Exception as exc:
-                            print(exc)
-                except:
-                    pass
+                if ntpPacket and ntpCheck:
+                    try:
+                        fingerprints = ntpProcess.process(pkt, layer, ts)
+                        for result in fingerprints:
+                            print_result(dumper, result)
+                    except Exception as exc:
+                        print(exc)
 
-                try:
-                    if sshPacket and sshCheck:
-                        [timeStamp, fingerprint] = satoriSSH.sshProcess(pkt, layer, ts, sshExactList, sshPartialList)
-                        printCheck(dumper, timeStamp, fingerprint)
-                except:
-                    pass
+                if sshPacket and sshCheck:
+                    try:
+                        fingerprints = sshProcess.process(pkt, layer, ts)
+                        for result in fingerprints:
+                            print_result(dumper, result)
+                    except Exception as exc:
+                        print(exc)
 
             except (KeyboardInterrupt, SystemExit):
                 raise
@@ -627,11 +622,11 @@ def main(dumper: Dumper):
 
                 try:
                     if tcpPacket and tcpCheck:
-                        result = tcpProcess.process(pkt, layer, ts)
-                        if result:
+                        fingerprints = tcpProcess.process(pkt, layer, ts)
+                        for result in fingerprints:
                             print_result(dumper, result)
-                except:
-                    pass
+                except Exception as exc:
+                    print(exc)
 
                 try:
                     if sslPacket and sslCheck:
@@ -709,23 +704,21 @@ def main(dumper: Dumper):
                 except Exception as exc:
                     print(exc)
 
-                try:
-                    if ntpPacket and ntpCheck:
-                        try:
-                            result = ntpProcess.process(pkt, layer, ts)
-                            if result:
-                                print_result(dumper, result)
-                        except Exception as exc:
-                            print(exc)
-                except:
-                    pass
+                if ntpPacket and ntpCheck:
+                    try:
+                        fingerprints = ntpProcess.process(pkt, layer, ts)
+                        for result in fingerprints:
+                            print_result(dumper, result)
+                    except Exception as exc:
+                        print(exc)
 
-                try:
-                    if sshPacket and sshCheck:
-                        [timeStamp, fingerprint] = satoriSSH.sshProcess(pkt, layer, ts, sshExactList, sshPartialList)
-                        printCheck(dumper, timeStamp, fingerprint)
-                except:
-                    pass
+                if sshPacket and sshCheck:
+                    try:
+                        fingerprints = sshProcess.process(pkt, layer, ts)
+                        for result in fingerprints:
+                            print_result(dumper, result)
+                    except Exception as exc:
+                        print(exc)
 
             except (KeyboardInterrupt, SystemExit):
                 raise
