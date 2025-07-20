@@ -268,7 +268,7 @@ def main(dumper: Dumper):
     # general vars
     tcpCheck = False
     dhcpCheck = False
-    httpCheck = False  
+    httpCheck = False
     icmpCheck = (
         False  # not enabled in lower code at this point due to tracking features I'm not willing to code at this time.
     )
@@ -283,8 +283,9 @@ def main(dumper: Dumper):
     ntpProcess = satoriNTP.NtpProcesser()
     sslProcess = satoriSSL.SslProcesser()
     dhcpProcess = satoriDHCP.DhcpProcesser()
-    httpServerProcess= satoriHTTP.HttpServerProcesser()
+    httpServerProcess = satoriHTTP.HttpServerProcesser()
     httpUserAgentProcess = satoriHTTP.HttpUserAgentProcesser()
+    dnsProcess = satoriDNS.DnsProcesser()
 
     tcpProcess.load_fingerprints()
     ntpProcess.load_fingerprints()
@@ -292,11 +293,12 @@ def main(dumper: Dumper):
     dhcpProcess.load_fingerprints()
     httpServerProcess.load_fingerprints()
     httpUserAgentProcess.load_fingerprints()
+    dnsProcess.load_fingerprints()
 
     # [icmpExactList, icmpDataExactList, icmpPartialList, icmpDataPartialList] = satoriICMP.BuildICMPFingerprintFiles()
     [nativeExactList, lanmanExactList, nativePartialList, lanmanPartialList] = satoriSMB.BuildSMBTCPFingerprintFiles()
     [browserExactList, browserPartialList] = satoriSMB.BuildSMBUDPFingerprintFiles()
-    [dnsExactList, dnsPartialList] = satoriDNS.BuildDNSFingerprintFiles()
+
     [sshExactList, sshPartialList] = satoriSSH.BuildSSHFingerprintFiles()
 
     # check pypacker version due to changes between 4.9 and 5.0 for one TCP feature
@@ -383,15 +385,11 @@ def main(dumper: Dumper):
 
                     try:
                         if httpPacket and httpCheck:
-                            fingerprints = httpUserAgentProcess.process(
-                                pkt,
-                                layer,
-                                ts
-                            )
+                            fingerprints = httpUserAgentProcess.process(pkt, layer, ts)
                             fingerprints.extend(httpServerProcess.process(pkt, layer, ts))
                             for result in fingerprints:
                                 print_result(dumper, result)
-                    except Exception as exc: 
+                    except Exception as exc:
                         print(exc)
 
                     #            try:
@@ -427,12 +425,11 @@ def main(dumper: Dumper):
 
                     try:
                         if dnsPacket and dnsCheck:
-                            [timeStamp, fingerprint] = satoriDNS.dnsProcess(
-                                pkt, layer, ts, dnsExactList, dnsPartialList
-                            )
-                            printCheck(dumper, timeStamp, fingerprint)
-                    except:
-                        pass
+                            fingerprints = dnsProcess.process(pkt, layer, ts)
+                            for result in fingerprints:
+                                print_result(dumper, result)
+                    except Exception as exc:
+                        print(exc)
 
                     try:
                         if ntpPacket and ntpCheck:
@@ -522,15 +519,11 @@ def main(dumper: Dumper):
                     if httpPacket and httpCheck:
                         try:
                             if httpPacket and httpCheck:
-                                fingerprints = httpUserAgentProcess.process(
-                                    pkt,
-                                    layer,
-                                    ts
-                                )
+                                fingerprints = httpUserAgentProcess.process(pkt, layer, ts)
                                 fingerprints.extend(httpServerProcess.process(pkt, layer, ts))
                                 for result in fingerprints:
                                     print_result(dumper, result)
-                        except Exception as exc: 
+                        except Exception as exc:
                             print(exc)
                 except:
                     pass
@@ -570,10 +563,11 @@ def main(dumper: Dumper):
 
                 try:
                     if dnsPacket and dnsCheck:
-                        [timeStamp, fingerprint] = satoriDNS.dnsProcess(pkt, layer, ts, dnsExactList, dnsPartialList)
-                        printCheck(dumper, timeStamp, fingerprint)
-                except:
-                    pass
+                        fingerprints = dnsProcess.process(pkt, layer, ts)
+                        for result in fingerprints:
+                            print_result(dumper, result)
+                except Exception as exc:
+                    print(exc)
 
                 try:
                     if ntpPacket and ntpCheck:
@@ -667,18 +661,14 @@ def main(dumper: Dumper):
                     if httpPacket and httpCheck:
                         try:
                             if httpPacket and httpCheck:
-                                fingerprints = httpUserAgentProcess.process(
-                                    pkt,
-                                    layer,
-                                    ts
-                                )
+                                fingerprints = httpUserAgentProcess.process(pkt, layer, ts)
                                 fingerprints.extend(httpServerProcess.process(pkt, layer, ts))
                                 for result in fingerprints:
                                     print_result(dumper, result)
-                        except Exception as exc: 
+                        except Exception as exc:
                             print(exc)
-                except:
-                    pass
+                except Exception as exc:
+                    print(exc)
 
                 #        try:
                 #          if (eth[ethernet.Ethernet, ip.IP, icmp.ICMP] is not None) and icmpCheck:
@@ -713,10 +703,11 @@ def main(dumper: Dumper):
 
                 try:
                     if dnsPacket and dnsCheck:
-                        [timeStamp, fingerprint] = satoriDNS.dnsProcess(pkt, layer, ts, dnsExactList, dnsPartialList)
-                        printCheck(dumper, timeStamp, fingerprint)
-                except:
-                    pass
+                        fingerprints = dnsProcess.process(pkt, layer, ts)
+                        for result in fingerprints:
+                            print_result(dumper, result)
+                except Exception as exc:
+                    print(exc)
 
                 try:
                     if ntpPacket and ntpCheck:

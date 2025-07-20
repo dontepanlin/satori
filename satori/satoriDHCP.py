@@ -11,7 +11,7 @@ from pypacker.layer3 import ip
 from pypacker.layer12 import ethernet
 from pypacker.layer567 import dhcp
 
-from .satoriCommon import BaseProcesser, OsFingerprint, SatoriResult
+from .satoriCommon import BaseProcesser, OsFingerprint, SatoriResult, TimedSatoriResult
 
 # grab the latest fingerprint files:
 # wget chatteronthewire.org/download/updates/satori/fingerprints/dhcp.xml -O dhcp.xml
@@ -25,8 +25,8 @@ from .satoriCommon import BaseProcesser, OsFingerprint, SatoriResult
 
 @dataclass
 class DhcpOption:
-    exact: Dict[str, List[OsFingerprint]] = field(default_factory=lambda : defaultdict(list))
-    partial: Dict[str, List[OsFingerprint]] = field(default_factory=lambda : defaultdict(list))
+    exact: Dict[str, List[OsFingerprint]] = field(default_factory=lambda: defaultdict(list))
+    partial: Dict[str, List[OsFingerprint]] = field(default_factory=lambda: defaultdict(list))
 
 
 DhcpOptions = Dict[str, DhcpOption]
@@ -66,6 +66,7 @@ key_transform = {
 }
 
 # Discover DiscoverOptionsExactList
+
 
 class SatoriResultDhcp(SatoriResult):
     protocol: str = "DHCP"
@@ -141,8 +142,6 @@ class DhcpProcesser(BaseProcesser):
         ip4 = pkt.upper_layer
         udp1 = pkt.upper_layer.upper_layer
 
-        timeStamp = datetime.fromtimestamp(ts, tz=timezone.utc)
-
         dhcp1 = pkt[dhcp.DHCP]
         message_type = getDHCPMessageType(dhcp1.op)
         client_addr = dhcp1.ciaddr_s
@@ -150,10 +149,11 @@ class DhcpProcesser(BaseProcesser):
         next_server_addr = dhcp1.siaddr_s
         relay_server_addr = dhcp1.giaddr_s
         client_mac = pypacker.mac_bytes_to_str(dhcp1.chaddr[0:6])  # dump the padding is pypacker copies it all together
+        timeStamp = datetime.fromtimestamp(ts, tz=timezone.utc)
 
         [options_data, message_type, option55, vendor_code] = getDHCPOptions(dhcp1.opts)
         message_type = message_type.name
-        result = []
+        result: List[TimedSatoriResult] = []
         if options_data:
             fingerprint = dhcp_fingerprint_lookup(
                 self.options[key_transform[TestResult.options](message_type)].exact,
@@ -162,13 +162,16 @@ class DhcpProcesser(BaseProcesser):
             )
             if fingerprint:
                 result.append(
-                    SatoriResultDhcp(
-                        client_addr=client_addr,
-                        client_mac=client_mac,
-                        fingerprint=fingerprint,
-                        message_type=message_type,
-                        option_type=TestResult.options,
-                        options=options_data,
+                    TimedSatoriResult(
+                        timestamp=timeStamp,
+                        fingerprint=SatoriResultDhcp(
+                            client_addr=client_addr,
+                            client_mac=client_mac,
+                            fingerprint=fingerprint,
+                            message_type=message_type,
+                            option_type=TestResult.options,
+                            options=options_data,
+                        ),
                     )
                 )
         elif option55:
@@ -179,13 +182,16 @@ class DhcpProcesser(BaseProcesser):
             )
             if fingerprint:
                 result.append(
-                    SatoriResultDhcp(
-                        client_addr=client_addr,
-                        client_mac=client_mac,
-                        fingerprint=fingerprint,
-                        message_type=message_type,
-                        option_type=TestResult.options55,
-                        options=options_data,
+                    TimedSatoriResult(
+                        timestamp=timeStamp,
+                        fingerprint=SatoriResultDhcp(
+                            client_addr=client_addr,
+                            client_mac=client_mac,
+                            fingerprint=fingerprint,
+                            message_type=message_type,
+                            option_type=TestResult.options55,
+                            options=options_data,
+                        ),
                     )
                 )
         elif vendor_code:
@@ -196,13 +202,16 @@ class DhcpProcesser(BaseProcesser):
             )
             if fingerprint:
                 result.append(
-                    SatoriResultDhcp(
-                        client_addr=client_addr,
-                        client_mac=client_mac,
-                        fingerprint=fingerprint,
-                        message_type=message_type,
-                        option_type=TestResult.options55,
-                        options=vendor_code,
+                    TimedSatoriResult(
+                        timestamp=timeStamp,
+                        fingerprint=SatoriResultDhcp(
+                            client_addr=client_addr,
+                            client_mac=client_mac,
+                            fingerprint=fingerprint,
+                            message_type=message_type,
+                            option_type=TestResult.options55,
+                            options=vendor_code,
+                        ),
                     )
                 )
         return result

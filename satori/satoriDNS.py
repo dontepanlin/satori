@@ -1,11 +1,15 @@
-import untangle
-from . import satoriCommon
+from datetime import datetime, timezone
 from pathlib import Path
-from pypacker.layer12 import ethernet
-from pypacker.layer3 import ip
-from pypacker.layer567 import dns
-from datetime import datetime
+from typing import Optional, Dict, List
+from collections import defaultdict
+import untangle
 from pypacker import pypacker
+from pypacker.layer3 import ip
+from pypacker.layer12 import ethernet
+from pypacker.layer567 import dns
+
+from . import satoriCommon
+from .satoriCommon import BaseProcesser, OsFingerprint, SatoriResult, TimedSatoriResult
 
 # grab the latest fingerprint files:
 # wget chatteronthewire.org/download/updates/satori/fingerprints/dhcp.xml -O dhcp.xml
@@ -20,102 +24,80 @@ from pypacker import pypacker
 # due to the sheer number of DNS entries this will display we'll default to only displaying if there is a known fingerprint
 # people may want to change this to collect all DNS lookups
 displayKnownFingerprintsOnly = True
-#displayKnownFingerprintsOnly = False
-
-def version():
-  dateReleased='satoriDNS.py - 2023-07-02'
-  print(dateReleased)
-
-def dnsProcess(pkt, layer, ts, dnsExactList, dnsPartialList):
-  if layer == 'eth':
-    src_mac = pkt[ethernet.Ethernet].src_s
-  else:
-    #fake filler mac for all the others that don't have it, may have to add some elif above
-    src_mac = '00:00:00:00:00:00'
-
-  ip4 = pkt.upper_layer
-
-  fingerprintDNS = None
-  dnsAnswer = ''
-  dnsFingerprint = ''
-
-  timeStamp = datetime.utcfromtimestamp(ts).isoformat()
-
-  dns1 = pkt[dns.DNS]
-  for x in range(0,dns1.questions_amount):
-    if dns1.answers_amount == 0 and dns1.authrr_amount == 0:
-      if dns1.flags == 256 or dns1.flags == 33152:
-        dnsAnswer =  pypacker.dns_name_decode(dns1.queries[x].name)[:-1]
-
-  if (dnsAnswer != ''):
-    dnsFingerprint = fingerprintLookup(dnsExactList, dnsPartialList, dnsAnswer)
-    fingerprintDNS = ip4.src_s + ';' + src_mac + ';DNS;' + dnsAnswer + ';' + dnsFingerprint
-
-  if displayKnownFingerprintsOnly == False:
-    return [timeStamp, fingerprintDNS]
-  elif dnsFingerprint != '':
-    return [timeStamp, fingerprintDNS]
+# displayKnownFingerprintsOnly = False
 
 
-def BuildDNSFingerprintFiles():
-  # converting from the xml format to a more flat format that will hopefully be faster than walking the entire xml every FP lookup
-  dnsExactList = {}
-  dnsPartialList = {}
+class SatoriResultDns(SatoriResult):
+    protocol: str = "DNS"
+    domain: str
 
-  satoriPath = str(Path(__file__).resolve().parent)
-  obj = untangle.parse(satoriPath + '/fingerprints/dns.xml')
-  fingerprintsCount = len(obj.DNS.fingerprints)
-  for x in range(0,fingerprintsCount):
-    os = obj.DNS.fingerprints.fingerprint[x]['name']
-    testsCount = len(obj.DNS.fingerprints.fingerprint[x].dns_tests)
-    test = {}
-    for y in range(0,testsCount):
-      test = obj.DNS.fingerprints.fingerprint[x].dns_tests.test[y]
-      if test is None:  #if testsCount = 1, then untangle doesn't allow us to iterate through it
-        test = obj.DNS.fingerprints.fingerprint[x].dns_tests.test
-      matchtype = test['matchtype']
-      dns = test['dns']
-      weight = test['weight']
-      if matchtype == 'exact':
-        if dns in dnsExactList:
-          oldValue = dnsExactList.get(dns)
-          dnsExactList[dns] = oldValue + '|' + os + ':' + weight
+    def dump(self):
+        return self.model_dump()
+
+
+class DnsProcesser(BaseProcesser):
+    def __init__(self, xml_path: Optional[str] = None):
+        self.xml_path = xml_path
+        self.exact: Dict[str, List[OsFingerprint]] = defaultdict(list)
+        self.partial: Dict[str, List[OsFingerprint]] = defaultdict(list)
+
+    def load_fingerprints(self):
+        # converting from the xml format to a more flat format that will hopefully be faster than walking the entire xml every FP lookup
+
+        satoriPath = str(Path(__file__).resolve().parent)
+        obj = untangle.parse(satoriPath + "/fingerprints/dns.xml")
+        for x in range(0, len(obj.DNS.fingerprints)):
+            os = obj.DNS.fingerprints.fingerprint[x]["name"]
+            for y in range(0, len(obj.DNS.fingerprints.fingerprint[x].dns_tests)):
+                test = obj.DNS.fingerprints.fingerprint[x].dns_tests.test[y]
+                if test is None:  # if testsCount = 1, then untangle doesn't allow us to iterate through it
+                    test = obj.DNS.fingerprints.fingerprint[x].dns_tests.test
+                matchtype = test["matchtype"]
+                dns = test["dns"]
+                weight = test["weight"]
+                if matchtype == "exact":
+                    self.exact[dns].append(OsFingerprint(os=os, weight=weight))
+                else:
+                    self.partial[dns].append(OsFingerprint(os=os, weight=weight))
+
+    def process(self, pkt, layer, ts) -> List[TimedSatoriResult]:
+        if layer == "eth":
+            src_mac = pkt[ethernet.Ethernet].src_s
         else:
-          dnsExactList[dns] = os + ':' + weight
-      else:
-        if dns in dnsPartialList:
-          oldValue = dnsPartialList.get(dns)
-          dnsPartialList[dns] = oldValue + '|' + os + ':' + weight
-        else:
-          dnsPartialList[dns] = os + ':' + weight
+            # fake filler mac for all the others that don't have it, may have to add some elif above
+            src_mac = "00:00:00:00:00:00"
 
-  return [dnsExactList, dnsPartialList]
+        ip4 = pkt.upper_layer
 
+        dnsAnswer = ""
+        dns1 = pkt[dns.DNS]
+        for x in range(0, dns1.questions_amount):
+            if dns1.answers_amount == 0 and dns1.authrr_amount == 0:
+                if dns1.flags == 256 or dns1.flags == 33152:
+                    dnsAnswer = pypacker.dns_name_decode(dns1.queries[x].name)[:-1]
 
-def fingerprintLookup(exactList, partialList, value):
-  exactValue = ''
-  partialValue = ''
+        if dnsAnswer == "":
+            return []
 
-  if value in exactList:
-    exactValue = exactList.get(value)
+        dnsFingerprint = dns_fingerprint_lookup(self.exact, self.partial, dnsAnswer)
+        if not dnsFingerprint:
+            return []
 
-  for key, val in partialList.items():
-    if value.find(key) > -1:
-      partialValue = partialValue + '|' + val
-
-  if partialValue.startswith('|'):
-    partialValue = partialValue[1:]
-  if partialValue.endswith('|'):
-    partialValue = partialValue[:-1]
-
-  fingerprint = exactValue + '|' + partialValue
-  if fingerprint.startswith('|'):
-    fingerprint = fingerprint[1:]
-  if fingerprint.endswith('|'):
-    fingerprint = fingerprint[:-1]
-
-  fingerprint = satoriCommon.sortFingerprint(fingerprint)
-  return fingerprint
+        return [TimedSatoriResult(
+            timestamp=datetime.fromtimestamp(ts, tz=timezone.utc),
+            fingerprint=SatoriResultDns(
+                client_addr=ip4.src_s, client_mac=src_mac, fingerprint=dnsFingerprint, domain=dnsAnswer
+            )
+        )]
 
 
+def dns_fingerprint_lookup(exactList, partialList, value) -> List[OsFingerprint]:
+    fingerprint = []
+    if value in exactList:
+        fingerprint.extend(exactList.get(value))
 
+    for key, val in partialList.items():
+        if value.find(key) > -1:
+            fingerprint.extend(val)
+    fingerprint.sort(key=lambda item: item.weight)
+    return fingerprint
