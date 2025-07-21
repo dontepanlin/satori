@@ -5,8 +5,10 @@ import xml.etree.ElementTree as ET
 from datetime import datetime
 from pathlib import Path
 from typing import List, Optional, Dict, Any
-
+from dataclasses import dataclass
+from enum import Enum
 from pydantic import BaseModel
+from pypacker import pypacker
 
 VERSION_pypacker = importlib.metadata.version("pypacker")
 
@@ -34,14 +36,32 @@ class TimedSatoriResult(BaseModel):
         return {"timestamp": self.timestamp, "fingerprint": self.fingerprint.dump()}
 
 
+class PacketLayer(Enum):
+    eth = "eth"
+    lcc = "lcc"
+
+
+@dataclass
+class Packet:
+    pkt: pypacker.Packet
+    layer: PacketLayer
+    ts: int
+    packet_type: int = 0
+
+
 class BaseProcesser:
     """Abstract processer"""
+
+    @classmethod
+    def name(cls) -> str:
+        """processer name"""
+        raise NotImplementedError("Need to implement")
 
     def load_fingerprints(self):
         """Load fingerprints from xml file"""
         raise NotImplementedError("Need to implement")
 
-    def process(self, pkt, layer, ts) -> List[TimedSatoriResult]:
+    def process(self, pkt) -> List[TimedSatoriResult]:
         """Process packet"""
         raise NotImplementedError("Need to implement")
 

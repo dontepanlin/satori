@@ -10,7 +10,7 @@ from pypacker.layer12 import ethernet
 from pypacker.layer567 import ntp
 
 from .satoriCommon import (BaseProcesser, OsFingerprint, SatoriResult,
-                           TimedSatoriResult)
+                           TimedSatoriResult, Packet, PacketLayer)
 
 # https://datatracker.ietf.org/doc/html/rfc5905
 # grab the latest fingerprint files:
@@ -37,6 +37,10 @@ class NtpProcesser(BaseProcesser):
         self.ntp_exact: Dict[str, List[OsFingerprint]] = defaultdict(list)
         self.ntp_partial: Dict[str, List[OsFingerprint]] = defaultdict(list)
 
+    @classmethod
+    def name(cls):
+        return "ntp"
+    
     def load_fingerprints(self):
         satori_path = str(Path(__file__).resolve().parent)
         obj = untangle.parse(satori_path + "/fingerprints/ntp.xml")
@@ -54,16 +58,16 @@ class NtpProcesser(BaseProcesser):
                 else:
                     self.ntp_partial[ntp].append(OsFingerprint(os=os, weight=weight))
 
-    def process(self, pkt, layer, ts):
-        if layer == "eth":
-            src_mac = pkt[ethernet.Ethernet].src_s
+    def process(self, pkt: Packet):
+        if pkt.layer == PacketLayer.eth:
+            src_mac = pkt.pkt[ethernet.Ethernet].src_s
         else:
             # fake filler mac for all the others that don't have it, may have to add some elif above
             src_mac = "00:00:00:00:00:00"
 
-        ip4 = pkt.upper_layer
-        udp1 = pkt.upper_layer.upper_layer
-        ntp1 = pkt[ntp.NTP]
+        ip4 = pkt.pkt.upper_layer
+        udp1 = pkt.pkt.upper_layer.upper_layer
+        ntp1 = pkt.pkt[ntp.NTP]
 
         sport = udp1.sport
 
@@ -80,10 +84,10 @@ class NtpProcesser(BaseProcesser):
 
         id = pypacker.ip4_bytes_to_str(ntp1.id)
 
-        [referenceTime, referenceVal] = ntpTimeConvert(ntp1.update_time, ts)
-        [originateTime, originateVal] = ntpTimeConvert(ntp1.originate_time, ts)
-        [receiveTime, receiveVal] = ntpTimeConvert(ntp1.receive_time, ts)
-        [transmitTime, transmitVal] = ntpTimeConvert(ntp1.transmit_time, ts)
+        [referenceTime, referenceVal] = ntpTimeConvert(ntp1.update_time, pkt.ts)
+        [originateTime, originateVal] = ntpTimeConvert(ntp1.originate_time, pkt.ts)
+        [receiveTime, receiveVal] = ntpTimeConvert(ntp1.receive_time, pkt.ts)
+        [transmitTime, transmitVal] = ntpTimeConvert(ntp1.transmit_time, pkt.ts)
 
         # sport needs to be either 123 or 1024+
         if sport > 1024:
@@ -166,7 +170,7 @@ class NtpProcesser(BaseProcesser):
                 + str(get16bitSecs(dispersion))
             )
         else:
-            return None
+            return []
         #  elif mode == 4:
         # poll seemed to be from client it was replying too
         #    fingerprint = 'server;' + str(sport) + ',' + str(leap) + ',' + str(version) + ',' + str(get16bitSecs(dispersion)) + ',' + idVal + ',' + referenceVal + ',' + transmitVal
@@ -176,9 +180,9 @@ class NtpProcesser(BaseProcesser):
             ntpFingerprint = ntp_fingerprint_lookup(self.ntp_exact, self.ntp_partial, fingerprint)
 
         if not ntpFingerprint:
-            return None
+            return []
         return [TimedSatoriResult(
-            timestamp=datetime.fromtimestamp(ts, tz=timezone.utc),
+            timestamp=datetime.fromtimestamp(pkt.ts, tz=timezone.utc),
             fingerprint=SatoriResultNtp(
                 client_addr=ip4.src_s,
                 client_mac=src_mac,

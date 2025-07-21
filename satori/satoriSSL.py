@@ -15,7 +15,7 @@ import hashlib
 import requests
 from hashlib import sha256
 from typing import Optional, List, Dict
-from .satoriCommon import BaseProcesser, OsFingerprint, SatoriResult, TimedSatoriResult, VERSION_pypacker
+from .satoriCommon import BaseProcesser, OsFingerprint, SatoriResult, TimedSatoriResult, VERSION_pypacker, Packet, PacketLayer
 from collections import defaultdict
 
 
@@ -185,14 +185,18 @@ class SslProcesser(BaseProcesser):
         self.ssl_ja3s_xml_exact: Dict[str, List[OsFingerprint]] = defaultdict(list)
         self.ssl_ja4_xml_exact: Dict[str, List[OsFingerprint]] = defaultdict(list)
 
-    def process(self, pkt, layer, ts) -> List[TimedSatoriResult]:
-        if layer == "eth":
-            src_mac = pkt[ethernet.Ethernet].src_s
+    @classmethod
+    def name(cls):
+        return "ssl"
+
+    def process(self, pkt: Packet):
+        if pkt.layer == PacketLayer.eth:
+            src_mac = pkt.pkt[ethernet.Ethernet].src_s
         else:
             # fake filler mac for all the others that don't have it, may have to add some elif above
             src_mac = "00:00:00:00:00:00"
 
-        ip4 = pkt.upper_layer
+        ip4 = pkt.pkt.upper_layer
         ssl1 = ssl.SSL(ip4.upper_layer.body_bytes)
 
         if len(ssl1.records) == 0:
@@ -202,7 +206,7 @@ class SslProcesser(BaseProcesser):
         if len(results) == 0:
             return []
 
-        timestamp = datetime.fromtimestamp(ts, tz=timezone.utc)
+        timestamp = datetime.fromtimestamp(pkt.ts, tz=timezone.utc)
         fingerprints = []
 
         for fpType in results:
@@ -315,15 +319,15 @@ class SslProcesser(BaseProcesser):
 
 def quicProcess(pkt, layer, ts, sslJA4XMLExactList):
     if layer == "eth":
-        src_mac = pkt[ethernet.Ethernet].src_s
+        src_mac = pkt.pkt[ethernet.Ethernet].src_s
     else:
         # fake filler mac for all the others that don't have it, may have to add some elif above
         src_mac = "00:00:00:00:00:00"
 
-    ip4 = pkt.upper_layer
-    udp1 = pkt.upper_layer.upper_layer
+    ip4 = pkt.pkt.upper_layer
+    udp1 = pkt.pkt.upper_layer.upper_layer
     print(udp1)
-    timeStamp = datetime.fromtimestamp(ts, tz=timezone.utc)
+    timeStamp = datetime.fromtimestamp(pkt.ts, tz=timezone.utc)
     fingerprint = None
 
     sslFingerprint = ""

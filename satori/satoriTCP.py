@@ -9,7 +9,7 @@ from typing import Dict, List, Optional
 import untangle
 from pypacker.layer12 import ethernet
 
-from .satoriCommon import BaseProcesser, OsFingerprint, SatoriResult, TimedSatoriResult, VERSION_pypacker
+from .satoriCommon import BaseProcesser, OsFingerprint, SatoriResult, TimedSatoriResult, VERSION_pypacker, Packet, PacketLayer
 
 # grab the latest fingerprint files:
 # wget chatteronthewire.org/download/updates/satori/fingerprints/tcp.xml -O tcp.xml
@@ -37,6 +37,10 @@ class TcpProcesser(BaseProcesser):
         self.syn_ack_exact = defaultdict(list)
         self.syn_partial = defaultdict(list)
         self.syn_ack_partial = defaultdict(list)
+    
+    @classmethod
+    def name(cls):
+        return "tcp"
 
     def load_fingerprints(self):
         obj = untangle.parse(str(Path(__file__).resolve().parent) + "/fingerprints/tcp.xml")
@@ -61,20 +65,20 @@ class TcpProcesser(BaseProcesser):
                     else:  # SA packets
                         self.syn_ack_partial[tcpsig].append(OsFingerprint(os=os, weight=weight))
 
-    def process(self, pkt, layer, ts) -> Optional[TimedSatoriResult]:
-        if layer == "eth":
-            src_mac = pkt[ethernet.Ethernet].src_s
+    def process(self, pkt: Packet):
+        if pkt.layer == PacketLayer.eth:
+            src_mac = pkt.pkt[ethernet.Ethernet].src_s
         else:
             # fake filler mac for all the others that don't have it, may have to add some elif above
             src_mac = "00:00:00:00:00:00"
 
-        #  print(pkt)
-        ip4 = pkt.upper_layer
-        tcp1 = pkt.upper_layer.upper_layer
+        #  print(pkt.pkt)
+        ip4 = pkt.pkt.upper_layer
+        tcp1 = pkt.pkt.upper_layer.upper_layer
 
         # lets verify we have tcp options and it is a SYN or SYN/ACK packet
         if not ((len(tcp1.opts) > 0) and ((tcp1.flags == 0x02) or (tcp1.flags == 0x12))):
-            return None
+            return []
         p0fSignature = ""
         tcpSignature = ""
         ethercapSignature = ""
@@ -146,9 +150,9 @@ class TcpProcesser(BaseProcesser):
         elif tcpFlags == "SA":
             tcpFingerprint = tcp_fingerprint_lookup(self.syn_ack_exact, self.syn_ack_partial, tcpSignature)
         if not tcpFingerprint:
-            return None
+            return []
         return [TimedSatoriResult(
-            timestamp=datetime.fromtimestamp(ts, tz=timezone.utc),
+            timestamp=datetime.fromtimestamp(pkt.ts, tz=timezone.utc),
             fingerprint=SatoriResultTcp(
                 client_addr=ip4.src_s,
                 client_mac=src_mac,

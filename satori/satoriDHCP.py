@@ -11,7 +11,7 @@ from pypacker.layer3 import ip
 from pypacker.layer12 import ethernet
 from pypacker.layer567 import dhcp
 
-from .satoriCommon import BaseProcesser, OsFingerprint, SatoriResult, TimedSatoriResult
+from .satoriCommon import BaseProcesser, OsFingerprint, SatoriResult, TimedSatoriResult, Packet, PacketLayer
 
 # grab the latest fingerprint files:
 # wget chatteronthewire.org/download/updates/satori/fingerprints/dhcp.xml -O dhcp.xml
@@ -84,6 +84,10 @@ class DhcpProcesser(BaseProcesser):
         self.syn_exact: Dict[str, List[OsFingerprint]] = defaultdict(list)
         self.options: DhcpOptions = defaultdict(DhcpOption)
 
+    @classmethod
+    def name(cls):
+        return "dhcp"
+    
     def load_fingerprints(self):
         # converting from the xml format to a more flat format that will hopefully be faster than walking the entire xml every FP lookup
         # this got much larger than I thought it would!
@@ -133,23 +137,23 @@ class DhcpProcesser(BaseProcesser):
                 elif matchtype == "partial":
                     match_partial(dhcptype, self.options, os, weight, test_type, test_options)
 
-    def process(self, pkt, layer, ts):
-        if layer == "eth":
-            src_mac = pkt[ethernet.Ethernet].src_s
+    def process(self, pkt: Packet):
+        if pkt.layer == PacketLayer.eth:
+            src_mac = pkt.pkt[ethernet.Ethernet].src_s
         else:
             # fake filler mac for all the others that don't have it, may have to add some elif above
             src_mac = "00:00:00:00:00:00"
-        ip4 = pkt.upper_layer
-        udp1 = pkt.upper_layer.upper_layer
+        ip4 = pkt.pkt.upper_layer
+        udp1 = pkt.pkt.upper_layer.upper_layer
 
-        dhcp1 = pkt[dhcp.DHCP]
+        dhcp1 = pkt.pkt[dhcp.DHCP]
         message_type = getDHCPMessageType(dhcp1.op)
         client_addr = dhcp1.ciaddr_s
         your_addr = dhcp1.yiaddr_s
         next_server_addr = dhcp1.siaddr_s
         relay_server_addr = dhcp1.giaddr_s
         client_mac = pypacker.mac_bytes_to_str(dhcp1.chaddr[0:6])  # dump the padding is pypacker copies it all together
-        timeStamp = datetime.fromtimestamp(ts, tz=timezone.utc)
+        timeStamp = datetime.fromtimestamp(pkt.ts, tz=timezone.utc)
 
         [options_data, message_type, option55, vendor_code] = getDHCPOptions(dhcp1.opts)
         message_type = message_type.name
@@ -272,6 +276,8 @@ def getDHCPOptions(value):
     messageType = DhcpMessageType.Undefined
 
     for i in range(len(value)):
+        if not isinstance(value[i], dhcp.DHCPOpt):
+            continue
         try:
             options = options + str(value[i].type) + ","
             if value[i].type == 53:

@@ -7,7 +7,7 @@ import untangle
 from pypacker.layer3 import ip
 from pypacker.layer12 import ethernet
 
-from .satoriCommon import BaseProcesser, OsFingerprint, SatoriResult, TimedSatoriResult
+from .satoriCommon import BaseProcesser, OsFingerprint, SatoriResult, TimedSatoriResult, Packet, PacketLayer
 
 # grab the latest fingerprint files:
 # wget chatteronthewire.org/download/updates/satori/fingerprints/tcp.xml -O tcp.xml
@@ -33,6 +33,10 @@ class SshProcesser(BaseProcesser):
         self.exact: Dict[str, List[OsFingerprint]] = defaultdict(list)
         self.partial: Dict[str, List[OsFingerprint]] = defaultdict(list)
 
+    @classmethod
+    def name(cls):
+        return "ssh"
+
     def load_fingerprints(self):
         satoriPath = str(Path(__file__).resolve().parent)
         obj = untangle.parse(satoriPath + "/fingerprints/ssh.xml")
@@ -50,15 +54,15 @@ class SshProcesser(BaseProcesser):
                 else:
                     self.partial[ssh].append(OsFingerprint(os=os, weight=weight))
 
-    def process(self, pkt, layer, ts) -> List[TimedSatoriResult]:
-        if layer == "eth":
-            src_mac = pkt[ethernet.Ethernet].src_s
+    def process(self, pkt: Packet):
+        if pkt.layer == PacketLayer.eth:
+            src_mac = pkt.pkt[ethernet.Ethernet].src_s
         else:
             # fake filler mac for all the others that don't have it, may have to add some elif above
             src_mac = "00:00:00:00:00:00"
 
-        ip4 = pkt.upper_layer
-        tcp1 = pkt.upper_layer.upper_layer
+        ip4 = pkt.pkt.upper_layer
+        tcp1 = pkt.pkt.upper_layer.upper_layer
 
         ssh = ""
 
@@ -75,7 +79,7 @@ class SshProcesser(BaseProcesser):
 
         return [
             TimedSatoriResult(
-                timestamp=datetime.fromtimestamp(ts, tz=timezone.utc),
+                timestamp=datetime.fromtimestamp(pkt.ts, tz=timezone.utc),
                 fingerprint=SatoriResultSsh(
                     client_addr=ip4.src_s, client_mac=src_mac, fingerprint=sshFingerprint, banner=ssh
                 ),

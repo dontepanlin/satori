@@ -1,5 +1,5 @@
 import untangle
-from .satoriCommon import OsFingerprint, SatoriResult, BaseProcesser, TimedSatoriResult
+from .satoriCommon import OsFingerprint, SatoriResult, BaseProcesser, TimedSatoriResult, Packet, PacketLayer
 from pathlib import Path
 from datetime import datetime, timezone
 from pypacker.layer12 import ethernet
@@ -38,6 +38,10 @@ class HttpServerProcesser(BaseProcesser):
         self.exact: Dict[str, List[OsFingerprint]] = defaultdict(list)
         self.partial: Dict[str, List[OsFingerprint]] = defaultdict(list)
 
+    @classmethod
+    def name(cls):
+        return "http"
+    
     def load_fingerprints(self):
         # converting from the xml format to a more flat format that will hopefully be faster than walking the entire xml every FP lookup
         satoriPath = str(Path(__file__).resolve().parent)
@@ -58,16 +62,16 @@ class HttpServerProcesser(BaseProcesser):
                 else:
                     self.partial[webserver].append(OsFingerprint(os=os, weight=weight))
 
-    def process(self, pkt, layer, ts):
-        if layer == "eth":
-            src_mac = pkt[ethernet.Ethernet].src_s
+    def process(self, pkt: Packet):
+        if pkt.layer == PacketLayer.eth:
+            src_mac = pkt.pkt[ethernet.Ethernet].src_s
         else:
             # fake filler mac for all the others that don't have it, may have to add some elif above
             src_mac = "00:00:00:00:00:00"
 
-        ip4 = pkt.upper_layer
-        tcp1 = pkt.upper_layer.upper_layer
-        http1 = pkt.upper_layer.upper_layer.upper_layer
+        ip4 = pkt.pkt.upper_layer
+        tcp1 = pkt.pkt.upper_layer.upper_layer
+        http1 = pkt.pkt.upper_layer.upper_layer.upper_layer
 
         hdrServer = ""
         bodyServer = ""
@@ -77,7 +81,9 @@ class HttpServerProcesser(BaseProcesser):
         try:
             if (http1.hdr is not None) and (http1.hdr):
                 hdr = dict(http1.hdr)
-                hdrServer = hdr[b"Server"].decode("utf-8", "strict")
+                hdrServerBytes = hdr.get(b"Server")
+                if hdrServerBytes:
+                    hdrServer = hdrServerBytes.decode("utf-8", "strict")
             if http1.body_bytes:
                 body = http1.body_bytes.decode("utf-8", "strict")
                 i = body.find("Server: ")
@@ -90,7 +96,7 @@ class HttpServerProcesser(BaseProcesser):
         except Exception:
             pass
 
-        timestamp = datetime.fromtimestamp(ts, tz=timezone.utc)
+        timestamp = datetime.fromtimestamp(pkt.ts, tz=timezone.utc)
 
         if hdrServer:
             fingerprint = http_fingerprint_lookup(self.exact, self.partial, hdrServer)
@@ -144,15 +150,15 @@ class HttpUserAgentProcesser(BaseProcesser):
                 else:
                     self.partial[webuseragent].append(OsFingerprint(os=os, weight=weight))
 
-    def process(self, pkt, layer, ts):
-        if layer == "eth":
-            src_mac = pkt[ethernet.Ethernet].src_s
+    def process(self, pkt: Packet):
+        if pkt.layer == PacketLayer.eth:
+            src_mac = pkt.pkt[ethernet.Ethernet].src_s
         else:
             # fake filler mac for all the others that don't have it, may have to add some elif above
             src_mac = "00:00:00:00:00:00"
 
-        ip4 = pkt.upper_layer
-        http1 = pkt.upper_layer.upper_layer.upper_layer
+        ip4 = pkt.pkt.upper_layer
+        http1 = pkt.pkt.upper_layer.upper_layer.upper_layer
 
         hdrUserAgent = ""
         bodyUserAgent = ""
@@ -162,7 +168,9 @@ class HttpUserAgentProcesser(BaseProcesser):
         try:
             if (http1.hdr != None) and (http1.hdr):
                 hdr = dict(http1.hdr)
-                hdrUserAgent = hdr[b"User-Agent"].decode("utf-8", "strict")
+                hdrUserAgentBytes = hdr.get(b"User-Agent")
+                if hdrUserAgentBytes:
+                    hdrUserAgent = hdrUserAgentBytes.decode("utf-8", "strict")
             if http1.body_bytes:
                 body = http1.body_bytes.decode("utf-8", "strict")
                 i = body.find("User-Agent: ")
@@ -175,7 +183,7 @@ class HttpUserAgentProcesser(BaseProcesser):
         except Exception:
             pass
 
-        timestamp = datetime.fromtimestamp(ts, tz=timezone.utc)
+        timestamp = datetime.fromtimestamp(pkt.ts, tz=timezone.utc)
 
         if hdrUserAgent:
             fingerprint = http_fingerprint_lookup(self.exact, self.partial, hdrUserAgent)

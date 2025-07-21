@@ -9,7 +9,7 @@ from pypacker.layer3 import ip
 from pypacker.layer12 import ethernet
 from pypacker.layer567 import dns
 
-from .satoriCommon import BaseProcesser, OsFingerprint, SatoriResult, TimedSatoriResult
+from .satoriCommon import BaseProcesser, OsFingerprint, SatoriResult, TimedSatoriResult, Packet, PacketLayer
 
 # grab the latest fingerprint files:
 # wget chatteronthewire.org/download/updates/satori/fingerprints/dhcp.xml -O dhcp.xml
@@ -41,6 +41,10 @@ class DnsProcesser(BaseProcesser):
         self.exact: Dict[str, List[OsFingerprint]] = defaultdict(list)
         self.partial: Dict[str, List[OsFingerprint]] = defaultdict(list)
 
+    @classmethod
+    def name(cls):
+        return "dns"
+    
     def load_fingerprints(self):
         # converting from the xml format to a more flat format that will hopefully be faster than walking the entire xml every FP lookup
 
@@ -60,17 +64,17 @@ class DnsProcesser(BaseProcesser):
                 else:
                     self.partial[dns].append(OsFingerprint(os=os, weight=weight))
 
-    def process(self, pkt, layer, ts) -> List[TimedSatoriResult]:
-        if layer == "eth":
-            src_mac = pkt[ethernet.Ethernet].src_s
+    def process(self, pkt) -> List[TimedSatoriResult]:
+        if pkt.layer == PacketLayer.eth:
+            src_mac = pkt.pkt[ethernet.Ethernet].src_s
         else:
             # fake filler mac for all the others that don't have it, may have to add some elif above
             src_mac = "00:00:00:00:00:00"
 
-        ip4 = pkt.upper_layer
+        ip4 = pkt.pkt.upper_layer
 
         dnsAnswer = ""
-        dns1 = pkt[dns.DNS]
+        dns1 = pkt.pkt[dns.DNS]
         for x in range(0, dns1.questions_amount):
             if dns1.answers_amount == 0 and dns1.authrr_amount == 0:
                 if dns1.flags == 256 or dns1.flags == 33152:
@@ -85,7 +89,7 @@ class DnsProcesser(BaseProcesser):
 
         return [
             TimedSatoriResult(
-                timestamp=datetime.fromtimestamp(ts, tz=timezone.utc),
+                timestamp=datetime.fromtimestamp(pkt.ts, tz=timezone.utc),
                 fingerprint=SatoriResultDns(
                     client_addr=ip4.src_s, client_mac=src_mac, fingerprint=dnsFingerprint, domain=dnsAnswer
                 ),
