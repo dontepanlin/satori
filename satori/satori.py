@@ -250,18 +250,12 @@ class PacketHandlerMap:
     def get_handlers(self, packet_type: int) -> List[satoriCommon.BaseProcesser]:
         """Возвращаем обработчики для всех подходящих комбинаций флагов."""
         matched_handlers = []
-
         # Перебираем все подмножества флагов для данного типа пакета
         subset = packet_type
         while subset:
             if subset in self.handlers:
                 matched_handlers.extend(self.handlers[subset])
             subset = (subset - 1) & packet_type  # Следующее подмножество
-
-        # Также проверяем саму маску (если она присутствует в мапе)
-        if packet_type in self.handlers:
-            matched_handlers.extend(self.handlers[packet_type])
-
         return matched_handlers
 
 
