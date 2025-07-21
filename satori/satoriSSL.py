@@ -224,14 +224,15 @@ class SslProcesser(BaseProcesser):
                 ssl_fingerprint = ssl_fingerprint_lookup(self.ssl_ja4_xml_exact, ssl_hash)
             else:
                 continue
-            fingerprints.append(
-                TimedSatoriResult(
-                    timestamp=timestamp,
-                    fingerprint=SatoriResultSsl(
-                        client_addr=ip4.src_s, client_mac=src_mac, fingerprint=ssl_fingerprint, signature=ssl_hash
-                    ),
+            if ssl_fingerprint:
+                fingerprints.append(
+                    TimedSatoriResult(
+                        timestamp=timestamp,
+                        fingerprint=SatoriResultSsl(
+                            client_addr=ip4.src_s, client_mac=src_mac, fingerprint=ssl_fingerprint, signature=ssl_hash
+                        ),
+                    )
                 )
-            )
 
         return fingerprints
 
