@@ -99,7 +99,7 @@ class HttpServerProcesser(BaseProcesser):
         timestamp = datetime.fromtimestamp(pkt.ts, tz=timezone.utc)
 
         if hdrServer:
-            fingerprint = http_fingerprint_lookup(self.exact, self.partial, hdrServer)
+            fingerprint = http_fingerprint_lookup(self.exact, self.partial, hdrServer.lower())
             if fingerprint:
                 result.append(
                     TimedSatoriResult(
@@ -111,7 +111,7 @@ class HttpServerProcesser(BaseProcesser):
                 )
 
         if bodyServer:
-            fingerprint = http_fingerprint_lookup(self.exact, self.partial, bodyServer)
+            fingerprint = http_fingerprint_lookup(self.exact, self.partial, bodyServer.lower())
             if fingerprint:
                 result.append(
                     TimedSatoriResult(
@@ -143,7 +143,7 @@ class HttpUserAgentProcesser(BaseProcesser):
                 if test is None:  # if testsCount = 1, then untangle doesn't allow us to iterate through it
                     test = obj.WEBUSERAGENT.fingerprints.fingerprint[x].webuseragent_tests.test
                 matchtype = test["matchtype"]
-                webuseragent = test["webuseragent"]
+                webuseragent = test["webuseragent"].lower()
                 weight = test["weight"]
                 if matchtype == "exact":
                     self.exact[webuseragent].append(OsFingerprint(os=os, weight=weight))
@@ -186,7 +186,7 @@ class HttpUserAgentProcesser(BaseProcesser):
         timestamp = datetime.fromtimestamp(pkt.ts, tz=timezone.utc)
 
         if hdrUserAgent:
-            fingerprint = http_fingerprint_lookup(self.exact, self.partial, hdrUserAgent)
+            fingerprint = http_fingerprint_lookup(self.exact, self.partial, hdrUserAgent.lower())
             if fingerprint:
                 result.append(
                     TimedSatoriResult(
@@ -200,7 +200,7 @@ class HttpUserAgentProcesser(BaseProcesser):
                     )
                 )
         if bodyUserAgent:
-            fingerprint = http_fingerprint_lookup(self.exact, self.partial, bodyUserAgent)
+            fingerprint = http_fingerprint_lookup(self.exact, self.partial, bodyUserAgent.lower())
             if fingerprint:
                 result.append(
                     TimedSatoriResult(
