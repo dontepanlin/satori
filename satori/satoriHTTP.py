@@ -41,7 +41,7 @@ class HttpServerProcesser(BaseProcesser):
     @classmethod
     def name(cls):
         return "http"
-    
+
     def load_fingerprints(self):
         # converting from the xml format to a more flat format that will hopefully be faster than walking the entire xml every FP lookup
         satoriPath = str(Path(__file__).resolve().parent)
@@ -105,7 +105,14 @@ class HttpServerProcesser(BaseProcesser):
                     TimedSatoriResult(
                         timestamp=timestamp,
                         fingerprint=SatoriResultHttpServer(
-                            client_addr=ip4.src_s, client_mac=src_mac, fingerprint=fingerprint, server_header=hdrServer
+                            client_addr=ip4.src_s,
+                            client_mac=src_mac,
+                            fingerprint=fingerprint,
+                            server_header=hdrServer,
+                            server_addr=ip4.dst_s,
+                            client_port=tcp1.sport,
+                            server_port=tcp1.dport,
+                            ip_proto=ip4.p,
                         ),
                     )
                 )
@@ -117,7 +124,14 @@ class HttpServerProcesser(BaseProcesser):
                     TimedSatoriResult(
                         timestamp=timestamp,
                         fingerprint=SatoriResultHttpServer(
-                            client_addr=ip4.src_s, client_mac=src_mac, fingerprint=fingerprint, server_header=bodyServer
+                            client_addr=ip4.src_s,
+                            client_mac=src_mac,
+                            fingerprint=fingerprint,
+                            server_header=bodyServer,
+                            server_addr=ip4.dst_s,
+                            client_port=tcp1.sport,
+                            server_port=tcp1.dport,
+                            ip_proto=ip4.p,
                         ),
                     )
                 )

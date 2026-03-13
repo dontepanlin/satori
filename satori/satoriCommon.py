@@ -22,6 +22,10 @@ class SatoriResult(BaseModel):
     protocol: str
     client_addr: str
     client_mac: str
+    server_addr: str
+    client_port: int
+    server_port: int
+    ip_proto: int
     fingerprint: List[OsFingerprint]
 
     def dump(self) -> Dict[str, Any]:

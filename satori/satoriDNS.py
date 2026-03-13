@@ -44,7 +44,7 @@ class DnsProcesser(BaseProcesser):
     @classmethod
     def name(cls):
         return "dns"
-    
+
     def load_fingerprints(self):
         # converting from the xml format to a more flat format that will hopefully be faster than walking the entire xml every FP lookup
 
@@ -72,6 +72,7 @@ class DnsProcesser(BaseProcesser):
             src_mac = "00:00:00:00:00:00"
 
         ip4 = pkt.pkt.upper_layer
+        udp = ip4.upper_layer
 
         dnsAnswer = ""
         dns1 = pkt.pkt[dns.DNS]
@@ -91,7 +92,14 @@ class DnsProcesser(BaseProcesser):
             TimedSatoriResult(
                 timestamp=datetime.fromtimestamp(pkt.ts, tz=timezone.utc),
                 fingerprint=SatoriResultDns(
-                    client_addr=ip4.src_s, client_mac=src_mac, fingerprint=dnsFingerprint, domain=dnsAnswer
+                    client_addr=ip4.src_s,
+                    client_mac=src_mac,
+                    fingerprint=dnsFingerprint,
+                    domain=dnsAnswer,
+                    server_addr=ip4.dst_s,
+                    client_port=udp.sport,
+                    server_port=udp.dport,
+                    ip_proto=ip4.p,
                 ),
             )
         ]

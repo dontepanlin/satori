@@ -81,7 +81,14 @@ class SshProcesser(BaseProcesser):
             TimedSatoriResult(
                 timestamp=datetime.fromtimestamp(pkt.ts, tz=timezone.utc),
                 fingerprint=SatoriResultSsh(
-                    client_addr=ip4.src_s, client_mac=src_mac, fingerprint=sshFingerprint, banner=ssh
+                    client_addr=ip4.src_s,
+                    client_mac=src_mac,
+                    fingerprint=sshFingerprint,
+                    banner=ssh,
+                    server_addr=ip4.dst_s,
+                    client_port=tcp1.sport,
+                    server_port=tcp1.dport,
+                    ip_proto=ip4.p,
                 ),
             )
         ]

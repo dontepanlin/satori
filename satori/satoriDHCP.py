@@ -87,7 +87,7 @@ class DhcpProcesser(BaseProcesser):
     @classmethod
     def name(cls):
         return "dhcp"
-    
+
     def load_fingerprints(self):
         # converting from the xml format to a more flat format that will hopefully be faster than walking the entire xml every FP lookup
         # this got much larger than I thought it would!
@@ -175,6 +175,10 @@ class DhcpProcesser(BaseProcesser):
                             message_type=message_type,
                             option_type=TestResult.options,
                             options=options_data,
+                            server_addr=ip4.dst_s,
+                            client_port=udp1.sport,
+                            server_port=udp1.dport,
+                            ip_proto=ip4.p,
                         ),
                     )
                 )
@@ -195,6 +199,10 @@ class DhcpProcesser(BaseProcesser):
                             message_type=message_type,
                             option_type=TestResult.options55,
                             options=options_data,
+                            server_addr=ip4.dst_s,
+                            client_port=udp1.sport,
+                            server_port=udp1.dport,
+                            ip_proto=ip4.p,
                         ),
                     )
                 )
@@ -215,6 +223,10 @@ class DhcpProcesser(BaseProcesser):
                             message_type=message_type,
                             option_type=TestResult.options55,
                             options=vendor_code,
+                            server_addr=ip4.dst_s,
+                            client_port=udp1.sport,
+                            server_port=udp1.dport,
+                            ip_proto=ip4.p,
                         ),
                     )
                 )

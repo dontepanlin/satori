@@ -9,7 +9,15 @@ from typing import Dict, List, Optional
 import untangle
 from pypacker.layer12 import ethernet
 
-from .satoriCommon import BaseProcesser, OsFingerprint, SatoriResult, TimedSatoriResult, VERSION_pypacker, Packet, PacketLayer
+from .satoriCommon import (
+    BaseProcesser,
+    OsFingerprint,
+    SatoriResult,
+    TimedSatoriResult,
+    VERSION_pypacker,
+    Packet,
+    PacketLayer,
+)
 
 # grab the latest fingerprint files:
 # wget chatteronthewire.org/download/updates/satori/fingerprints/tcp.xml -O tcp.xml
@@ -27,7 +35,7 @@ class SatoriResultTcp(SatoriResult):
     signature: str
 
     def dump(self):
-        return self.model_dump() 
+        return self.model_dump()
 
 
 class TcpProcesser(BaseProcesser):
@@ -37,7 +45,7 @@ class TcpProcesser(BaseProcesser):
         self.syn_ack_exact = defaultdict(list)
         self.syn_partial = defaultdict(list)
         self.syn_ack_partial = defaultdict(list)
-    
+
     @classmethod
     def name(cls):
         return "tcp"
@@ -151,16 +159,22 @@ class TcpProcesser(BaseProcesser):
             tcpFingerprint = tcp_fingerprint_lookup(self.syn_ack_exact, self.syn_ack_partial, tcpSignature)
         if not tcpFingerprint:
             return []
-        return [TimedSatoriResult(
-            timestamp=datetime.fromtimestamp(pkt.ts, tz=timezone.utc),
-            fingerprint=SatoriResultTcp(
-                client_addr=ip4.src_s,
-                client_mac=src_mac,
-                tcp_flags=tcpFlags,
-                signature=tcpSignature,
-                fingerprint=tcpFingerprint,
-            ),
-        )]
+        return [
+            TimedSatoriResult(
+                timestamp=datetime.fromtimestamp(pkt.ts, tz=timezone.utc),
+                fingerprint=SatoriResultTcp(
+                    client_addr=ip4.src_s,
+                    client_mac=src_mac,
+                    server_addr=ip4.dst_s,
+                    client_port=tcp1.sport,
+                    server_port=tcp1.dport,
+                    ip_proto=ip4.p,
+                    tcp_flags=tcpFlags,
+                    signature=tcpSignature,
+                    fingerprint=tcpFingerprint,
+                ),
+            )
+        ]
 
 
 def tcp_fingerprint_lookup(exact, partial, signature):

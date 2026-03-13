@@ -58,7 +58,7 @@ class SmbUdpProcesser(BaseProcesser):
     @classmethod
     def name(cls):
         return "smb.udp"
-    
+
     def load_fingerprints(self):
         # converting from the xml format to a more flat format that will hopefully be faster than walking the entire xml every FP lookup
         satoriPath = str(Path(__file__).resolve().parent)
@@ -124,6 +124,10 @@ class SmbUdpProcesser(BaseProcesser):
                                     fingerprint=osGuess,
                                     os_version=osVersion,
                                     browser_version=browVersion,
+                                    server_addr=ip4.dst_s,
+                                    client_port=udp1.sport,
+                                    server_port=udp1.dport,
+                                    ip_proto=ip4.p,
                                 ),
                             )
                         ]
@@ -146,11 +150,11 @@ class SmbTcpProcesser(BaseProcesser):
         self.native_partial: Dict[str, List[OsFingerprint]] = defaultdict(list)
         self.lanman_exact: Dict[str, List[OsFingerprint]] = defaultdict(list)
         self.lanman_partial: Dict[str, List[OsFingerprint]] = defaultdict(list)
-    
+
     @classmethod
     def name(cls):
         return "smb.tcp"
-    
+
     def process(self, pkt: Packet):
         if pkt.layer == PacketLayer.eth:
             src_mac = pkt.pkt[ethernet.Ethernet].src_s
@@ -269,6 +273,10 @@ class SmbTcpProcesser(BaseProcesser):
                                         fingerprint=osGuess,
                                         native_type="NativeOS",
                                         native_version=nativeOS,
+                                        server_addr=ip4.dst_s,
+                                        client_port=tcp1.sport,
+                                        server_port=tcp1.dport,
+                                        ip_proto=ip4.p,
                                     ),
                                 )
                             )

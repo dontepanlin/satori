@@ -15,7 +15,15 @@ import hashlib
 import requests
 from hashlib import sha256
 from typing import Optional, List, Dict
-from .satoriCommon import BaseProcesser, OsFingerprint, SatoriResult, TimedSatoriResult, VERSION_pypacker, Packet, PacketLayer
+from .satoriCommon import (
+    BaseProcesser,
+    OsFingerprint,
+    SatoriResult,
+    TimedSatoriResult,
+    VERSION_pypacker,
+    Packet,
+    PacketLayer,
+)
 from collections import defaultdict
 
 
@@ -174,7 +182,7 @@ class SatoriResultSsl(SatoriResult):
     signature: str
 
     def dump(self):
-        return self.model_dump() 
+        return self.model_dump()
 
 
 class SslProcesser(BaseProcesser):
@@ -197,6 +205,7 @@ class SslProcesser(BaseProcesser):
             src_mac = "00:00:00:00:00:00"
 
         ip4 = pkt.pkt.upper_layer
+        tcp1 = ip4.upper_layer
         ssl1 = ssl.SSL(ip4.upper_layer.body_bytes)
 
         if len(ssl1.records) == 0:
@@ -229,7 +238,14 @@ class SslProcesser(BaseProcesser):
                     TimedSatoriResult(
                         timestamp=timestamp,
                         fingerprint=SatoriResultSsl(
-                            client_addr=ip4.src_s, client_mac=src_mac, fingerprint=ssl_fingerprint, signature=ssl_hash
+                            client_addr=ip4.src_s,
+                            client_mac=src_mac,
+                            fingerprint=ssl_fingerprint,
+                            signature=ssl_hash,
+                            server_addr=ip4.dst_s,
+                            client_port=tcp1.sport,
+                            server_port=tcp1.dport,
+                            ip_proto=ip4.p,
                         ),
                     )
                 )

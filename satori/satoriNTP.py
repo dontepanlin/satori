@@ -9,8 +9,7 @@ from pypacker.layer3 import ip
 from pypacker.layer12 import ethernet
 from pypacker.layer567 import ntp
 
-from .satoriCommon import (BaseProcesser, OsFingerprint, SatoriResult,
-                           TimedSatoriResult, Packet, PacketLayer)
+from .satoriCommon import BaseProcesser, OsFingerprint, SatoriResult, TimedSatoriResult, Packet, PacketLayer
 
 # https://datatracker.ietf.org/doc/html/rfc5905
 # grab the latest fingerprint files:
@@ -26,9 +25,9 @@ from .satoriCommon import (BaseProcesser, OsFingerprint, SatoriResult,
 class SatoriResultNtp(SatoriResult):
     protocol: str = "NTP"
     signature: str
-    
+
     def dump(self):
-        return self.model_dump() 
+        return self.model_dump()
 
 
 class NtpProcesser(BaseProcesser):
@@ -40,7 +39,7 @@ class NtpProcesser(BaseProcesser):
     @classmethod
     def name(cls):
         return "ntp"
-    
+
     def load_fingerprints(self):
         satori_path = str(Path(__file__).resolve().parent)
         obj = untangle.parse(satori_path + "/fingerprints/ntp.xml")
@@ -181,15 +180,21 @@ class NtpProcesser(BaseProcesser):
 
         if not ntpFingerprint:
             return []
-        return [TimedSatoriResult(
-            timestamp=datetime.fromtimestamp(pkt.ts, tz=timezone.utc),
-            fingerprint=SatoriResultNtp(
-                client_addr=ip4.src_s,
-                client_mac=src_mac,
-                signature=fingerprint,
-                fingerprint=ntpFingerprint,
-            ),
-        )]
+        return [
+            TimedSatoriResult(
+                timestamp=datetime.fromtimestamp(pkt.ts, tz=timezone.utc),
+                fingerprint=SatoriResultNtp(
+                    client_addr=ip4.src_s,
+                    client_mac=src_mac,
+                    signature=fingerprint,
+                    fingerprint=ntpFingerprint,
+                    server_addr=ip4.dst_s,
+                    client_port=udp1.sport,
+                    server_port=udp1.dport,
+                    ip_proto=ip4.p,
+                ),
+            )
+        ]
 
 
 def get16bitSecs(value):
